@@ -1,0 +1,2 @@
+#!/bin/sh
+docker run --rm -v "$(pwd)/src:/networking" -w /networking rust:1.57-buster "$@"
