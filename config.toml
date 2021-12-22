@@ -1,0 +1,12 @@
+device = "eth0"
+virtual_mac = "02:00:00:00:00:01"
+#virtual_ip = "10.211.55.100"
+#virtual_ip = "172.17.0.100"
+virtual_ip = "192.168.10.130"
+virtual_mask = "255.255.255.0"
+#virtual_mask = "255.255.0.0"
+ip_ttl = 64
+mtu = 1500
+#gateway = "10.211.55.4"
+#gateway = "172.17.0.1"
+gateway = "192.168.10.1"

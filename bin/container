@@ -1,0 +1,2 @@
+#!/bin/sh
+docker run --rm -v "$PWD:/networking" -w /networking -it rust:1.57-buster /bin/bash
