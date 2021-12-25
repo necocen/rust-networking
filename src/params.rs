@@ -1,6 +1,5 @@
-use crate::utils::mac_to_str;
+use crate::mac_addr::MacAddr;
 
-use super::utils::str_to_mac;
 use std::net::Ipv4Addr;
 
 #[derive(serde::Deserialize, Debug)]
@@ -17,9 +16,9 @@ struct RawParams {
 #[derive(Clone, Debug)]
 pub struct Params {
     pub device: String,
-    pub my_mac: [u8; 6],
+    pub my_mac: MacAddr,
     pub my_ip: Ipv4Addr,
-    pub virtual_mac: [u8; 6],
+    pub virtual_mac: MacAddr,
     pub virtual_ip: Ipv4Addr,
     pub virtual_mask: Ipv4Addr,
     pub ip_ttl: u8,
@@ -33,9 +32,9 @@ impl Params {
 
         Ok(Params {
             device: config.device,
-            my_mac: [0; 6],
+            my_mac: MacAddr::ZERO,
             my_ip: Ipv4Addr::from(0),
-            virtual_mac: str_to_mac(&config.virtual_mac)?,
+            virtual_mac: config.virtual_mac.parse()?,
             virtual_ip: config.virtual_ip.parse()?,
             virtual_mask: config.virtual_mask.parse()?,
             ip_ttl: config.ip_ttl,
@@ -55,7 +54,7 @@ impl Params {
 
     pub fn print(&self) {
         println!("device = {}", self.device);
-        println!("virtual_mac = {}", mac_to_str(self.virtual_mac));
+        println!("virtual_mac = {}", self.virtual_mac);
         println!("virtual_ip = {}", self.virtual_ip);
         println!("virtual_mask = {}", self.virtual_mask);
         println!("gateway = {}", self.gateway);
