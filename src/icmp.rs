@@ -1,6 +1,14 @@
-use std::{fmt::Debug, intrinsics::copy_nonoverlapping, mem::size_of, net::Ipv4Addr};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    intrinsics::copy_nonoverlapping,
+    mem::size_of,
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{bail, Result};
+use chrono::Local;
 
 use crate::{
     constants::*,
@@ -57,11 +65,15 @@ impl Debug for IcmpHeader {
 #[derive(Debug, Clone)]
 pub struct IcmpClient {
     ip_client: IpClient,
+    ping_data: Arc<Mutex<HashMap<u16, i64>>>,
 }
 
 impl IcmpClient {
     pub fn new(ip_client: IpClient) -> IcmpClient {
-        IcmpClient { ip_client }
+        IcmpClient {
+            ip_client,
+            ping_data: Arc::new(Mutex::new(HashMap::default())),
+        }
     }
 
     pub fn send_echo(
@@ -102,8 +114,7 @@ impl IcmpClient {
             &send_buf[..size],
         )?;
         log::debug!("SENT >>> {:#?}", icmp);
-        // TODO: gettimeofday
-        // 単にタイムスタンプを記録すればよい
+        self.add_timestamp(seq, Local::now().timestamp_nanos());
         Ok(())
     }
 
@@ -162,15 +173,28 @@ impl IcmpClient {
         if u16::from_be(icmp.icmp_id) == std::process::id() as u16 {
             let seq = u16::from_be(icmp.icmp_seq);
             if seq > 0 && seq <= 4 {
-                //Local::now().timestamp_nanos();
+                let ts = self.get_timestamp(seq).unwrap();
+                let delta_ns = Local::now().timestamp_nanos() - ts;
+                let delta_ms = delta_ns as f64 / 1e6;
                 println!(
-                    "{} bytes from {}: icmp_seq = {}, ttl = {}",
+                    "{} bytes from {}: icmp_seq = {}, ttl = {}, time = {:.03} ms",
                     u16::from_be(ip.ip_len),
                     Ipv4Addr::from(u32::from_be(ip.ip_src)),
                     u16::from_be(icmp.icmp_seq),
-                    ip.ip_ttl
+                    ip.ip_ttl,
+                    delta_ms,
                 );
             }
         }
+    }
+
+    fn add_timestamp(&self, seq: u16, ts: i64) {
+        let mut ping_data = self.ping_data.lock().unwrap();
+        ping_data.insert(seq, ts);
+    }
+
+    fn get_timestamp(&self, seq: u16) -> Option<i64> {
+        let mut ping_data = self.ping_data.lock().unwrap();
+        ping_data.remove(&seq)
     }
 }
