@@ -43,6 +43,8 @@ impl SocketInner {
             close(self.soc);
         }
 
+        log::info!("Socket closed");
+
         Ok(())
     }
 }
@@ -52,7 +54,6 @@ impl Drop for SocketInner {
         if let Some(err) = self.close().err() {
             eprintln!("{}", err);
         }
-        println!("Closed");
     }
 }
 
@@ -111,6 +112,7 @@ impl Socket {
         unsafe {
             write(soc, data.as_ptr() as *const c_void, data.len());
         }
+        log::debug!("Write {} bytes to socket", data.len());
     }
 
     pub fn read(&self, buffer: &mut [u8]) -> Result<usize> {

@@ -55,7 +55,7 @@ impl EtherClient {
         if destination != MacAddr::BROADCAST && destination != params.virtual_mac {
             bail!("other");
         }
-        log::info!("RECV <<< {:#?}", eh);
+        log::debug!("RECV <<< {:#?}", eh);
         match u16::from_be(eh.ether_type) {
             ETH_P_ARP => Ok(EtherData::Arp(eh, &data[size_of::<EtherHeader>()..])),
             ETH_P_IP => Ok(EtherData::Ip(eh, &data[size_of::<EtherHeader>()..])),
@@ -97,7 +97,7 @@ impl EtherClient {
         }
         let send_len = (HEAD_LEN + data_len).max(ETH_ZLEN);
         self.socket.write(&sbuf[..send_len]);
-        log::info!("SENT >>> {:#?}", eh);
+        log::debug!("SENT >>> {:#?}", eh);
         Ok(())
     }
 }

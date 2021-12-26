@@ -101,7 +101,7 @@ impl IcmpClient {
             params.ip_ttl,
             &send_buf[..size],
         )?;
-        log::info!("SENT >>> {:#?}", icmp);
+        log::debug!("SENT >>> {:#?}", icmp);
         // TODO: gettimeofday
         // 単にタイムスタンプを記録すればよい
         Ok(())
@@ -141,7 +141,7 @@ impl IcmpClient {
             ip_ttl,
             &send_buf[..send_len],
         )?;
-        log::info!("SENT >>> {:#?}", icmp);
+        log::debug!("SENT >>> {:#?}", icmp);
         Ok(())
     }
 
@@ -151,7 +151,7 @@ impl IcmpClient {
         if sum != 0 && sum != 0xFFFF {
             bail!("bad icmp checksum ({:04x}, {:04x})", sum, icmp.icmp_cksum);
         }
-        log::info!("RECV <<< {:#?}", icmp);
+        log::debug!("RECV <<< {:#?}", icmp);
         if icmp.icmp_type == ICMP_ECHOREPLY {
             self.check_ping(ip, &icmp);
         }

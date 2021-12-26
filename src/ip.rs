@@ -192,13 +192,13 @@ impl IpClient {
         if (u16::from_be(ip.ip_off) & IP_MF) == 0 {
             // データ全部届いた
             entry.len = offset + plen;
-            log::info!("RECV <<< {:#?}", ip);
+            log::debug!("RECV <<< {:#?}", ip);
             Ok((
                 ip,
                 Some(buffer.remove(&u16::from_be(ip.ip_id)).unwrap()[..(offset + plen)].to_vec()),
             ))
         } else {
-            log::info!("RECV(fragment) <<< {:#?}", ip);
+            log::debug!("RECV(fragment) <<< {:#?}", ip);
             Ok((ip, None))
         }
     }
@@ -263,7 +263,7 @@ impl IpClient {
                 ETH_P_IP,
                 &send_buf[..(send_len + size_of::<IpHeader>())],
             )?;
-            log::info!("SENT >>> {:#?}", ip);
+            log::debug!("SENT >>> {:#?}", ip);
 
             unsafe {
                 data_ptr = data_ptr.add(send_len);
