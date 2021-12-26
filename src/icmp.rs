@@ -92,7 +92,6 @@ impl IcmpClient {
 
         icmp.icmp_cksum = check_sum(&send_buf[..size]);
 
-        log::info!("SEND >>> {:#?}", icmp);
         self.ip_client.send(
             params,
             &params.virtual_ip,
@@ -102,6 +101,7 @@ impl IcmpClient {
             params.ip_ttl,
             &send_buf[..size],
         )?;
+        log::info!("SENT >>> {:#?}", icmp);
         // TODO: gettimeofday
         // 単にタイムスタンプを記録すればよい
         Ok(())
@@ -132,7 +132,6 @@ impl IcmpClient {
         let send_len = size_of::<IcmpHeader>() + data.len();
         icmp.icmp_cksum = check_sum(&send_buf[..send_len]);
 
-        log::info!("SEND >>> {:#?}", icmp);
         self.ip_client.send(
             params,
             &u32::from_be(r_ip.ip_dst).into(),
@@ -142,6 +141,7 @@ impl IcmpClient {
             ip_ttl,
             &send_buf[..send_len],
         )?;
+        log::info!("SENT >>> {:#?}", icmp);
         Ok(())
     }
 

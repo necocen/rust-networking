@@ -119,7 +119,10 @@ impl Debug for IpHeader {
             )
             .field("ip_ttl", &self.ip_ttl)
             .field("ip_p", &format_args!("{} ({})", self.ip_p, protocol))
-            .field("ip_sum", &format_args!("0x{:04x}", u16::from_be(self.ip_sum)))
+            .field(
+                "ip_sum",
+                &format_args!("0x{:04x}", u16::from_be(self.ip_sum)),
+            )
             .field("ip_src", &Ipv4Addr::from(u32::from_be(self.ip_src)))
             .field("ip_dst", &Ipv4Addr::from(u32::from_be(self.ip_dst)))
             .finish()
@@ -254,14 +257,13 @@ impl IpClient {
                 copy_nonoverlapping(data.as_ptr(), ptr.add(size_of::<IpHeader>()), send_len);
             }
 
-            log::info!("SEND >>> {:#?}", ip);
-
             self.ether_client.send(
                 src_mac,
                 dst_mac,
                 ETH_P_IP,
                 &send_buf[..(send_len + size_of::<IpHeader>())],
             )?;
+            log::info!("SENT >>> {:#?}", ip);
 
             unsafe {
                 data_ptr = data_ptr.add(send_len);

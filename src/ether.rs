@@ -95,9 +95,9 @@ impl EtherClient {
                 write_bytes(ptr, 0, pad_len);
             }
         }
-        log::info!("SEND >>> {:#?}", eh);
         let send_len = (HEAD_LEN + data_len).max(ETH_ZLEN);
         self.socket.write(&sbuf[..send_len]);
+        log::info!("SENT >>> {:#?}", eh);
         Ok(())
     }
 }

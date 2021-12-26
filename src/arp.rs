@@ -184,10 +184,11 @@ impl ArpClient {
         arp.arp_tha = (*dst_mac).into();
         arp.arp_spa = src_ip.octets();
         arp.arp_tpa = dst_ip.octets();
-        log::info!("SEND >>> {:#?}", arp);
         let data = unsafe { std::slice::from_raw_parts(&arp as *const _ as *const u8, HEAD_LEN) };
         self.ether_client
-            .send(ether_src_mac, ether_dst_mac, ETH_P_ARP, data)
+            .send(ether_src_mac, ether_dst_mac, ETH_P_ARP, data)?;
+        log::info!("SENT >>> {:#?}", arp);
+        Ok(())
     }
 
     pub fn send_reply(&self, params: &Params, eh: &EtherHeader, arp: &ArpHeader) -> Result<()> {
