@@ -1,26 +1,21 @@
 use crate::{
-    arp::ArpClient,
-    cmd::Cmd,
-    constants::*,
-    ether::{EtherClient, EtherData},
-    icmp::{IcmpClient, IcmpHeader},
-    ip::{IpClient, IpHeader},
-    socket::Socket,
+    arp::ArpClient, cmd::Cmd, constants::*, ether::EtherClient, icmp::IcmpClient, ip::IpClient,
+    receiver::Receiver, socket::Socket,
 };
 use anyhow::bail;
 use ifstructs::ifreq;
 
 use libc::{
     __errno_location, c_char, close, fgets, ioctl, poll, pollfd, signal, sockaddr_in, socket,
-    AF_INET, ARPOP_REQUEST, EINTR, POLLERR, POLLIN, SIGINT, SIGPIPE, SIGQUIT, SIGTERM, SIG_IGN,
-    SIOCGIFADDR, SIOCGIFFLAGS, SIOCGIFHWADDR, SIOCGIFMTU, SOCK_DGRAM, STDIN_FILENO,
+    AF_INET, EINTR, POLLERR, POLLIN, SIGINT, SIGPIPE, SIGQUIT, SIGTERM, SIG_IGN, SIOCGIFADDR,
+    SIOCGIFFLAGS, SIOCGIFHWADDR, SIOCGIFMTU, SOCK_DGRAM, STDIN_FILENO,
 };
 use mac_addr::MacAddr;
 use params::Params;
 
 use std::{
     ffi::CStr,
-    mem::{size_of, transmute, zeroed},
+    mem::{transmute, zeroed},
     net::Ipv4Addr,
     sync::atomic::{AtomicBool, Ordering},
     thread::spawn,
@@ -34,6 +29,7 @@ mod icmp;
 mod ip;
 mod mac_addr;
 mod params;
+mod receiver;
 mod socket;
 mod utils;
 
@@ -172,6 +168,13 @@ fn main() -> anyhow::Result<()> {
         icmp_client: icmp_client.clone(),
         params: params.clone(),
     };
+    let receiver = Receiver {
+        ether_client,
+        arp_client: arp_client.clone(),
+        ip_client,
+        icmp_client,
+        params: params.clone(),
+    };
     let cmd_thread_handler = spawn(move || {
         let mut targets: [pollfd; 1] = unsafe { zeroed() };
         let mut buf: [u8; 2048] = unsafe { zeroed() };
@@ -202,8 +205,6 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    let p = params.clone();
-    let arpc = arp_client.clone();
     let eth_thread_handler = spawn(move || {
         let mut buf: [u8; 2048] = unsafe { zeroed() };
         while RUNNING.load(Ordering::Relaxed) {
@@ -216,39 +217,7 @@ fn main() -> anyhow::Result<()> {
                     continue;
                 }
             };
-
-            if let Err(e) = ether_client.receive(&p, &buf[..len]).and_then(|data| {
-                match data {
-                    EtherData::Arp(eh, data) => {
-                        let arp = arpc.receive(&p, data)?;
-                        if u16::from_be(arp.arp_op) == ARPOP_REQUEST {
-                            arpc.send_reply(&p, &eh, &arp)?;
-                        }
-                    }
-                    EtherData::Ip(_, data) => {
-                        let (ip, data) = ip_client.receive(data)?;
-                        if let (
-                            IpHeader {
-                                ip_p: IPPROTO_ICMP, ..
-                            },
-                            Some(data),
-                        ) = (ip, data)
-                        {
-                            let icmp = icmp_client.receive(&ip, &data)?;
-                            if icmp.icmp_type == ICMP_ECHO {
-                                icmp_client.send_echo_reply(
-                                    &p,
-                                    &ip,
-                                    &icmp,
-                                    &data[size_of::<IcmpHeader>()..],
-                                    p.ip_ttl,
-                                )?;
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }) {
+            if let Err(e) = receiver.receive(&buf[..len]) {
                 if e.to_string() != "other" {
                     eprintln!("{}", e);
                 }
