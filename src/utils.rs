@@ -1,32 +1,37 @@
-pub fn hex_dump(data: &[u8], size: usize) {
+use std::fmt::Write;
+
+pub fn hex_dump(data: &[u8]) -> String {
     let mut i = 0usize;
-    while i < size {
+    let mut string = String::new();
+    writeln!(&mut string, "DUMP {} BYTES:", data.len()).unwrap();
+    while i < data.len() {
         for j in 0..16usize {
             if j != 0 {
-                print!(" ");
+                write!(&mut string, " ").unwrap();
             }
-            if i + j < size {
-                print!("{:02x}", data[i + j]);
+            if i + j < data.len() {
+                write!(&mut string, "{:02x}", data[i + j]).unwrap();
             } else {
-                print!(" ");
+                write!(&mut string, "  ").unwrap();
             }
         }
-        print!("    ");
+        write!(&mut string, "    ").unwrap();
         for _ in 0..16 {
-            if i < size {
+            if i < data.len() {
                 let c = data[i] as char;
                 if c.is_ascii() && !c.is_control() {
-                    print!("{:}", c);
+                    write!(&mut string, "{:}", c).unwrap();
                 } else {
-                    print!(".");
+                    write!(&mut string, ".").unwrap();
                 }
                 i += 1;
             } else {
-                print!(" ");
+                write!(&mut string, " ").unwrap();
             }
         }
-        println!();
+        writeln!(&mut string).unwrap();
     }
+    string
 }
 
 pub fn check_sum(data: &[u8]) -> u16 {
