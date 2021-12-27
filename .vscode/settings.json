@@ -61,6 +61,7 @@
         "smac",
         "sockaddr",
         "ulen",
+        "UNREACH",
         "ZLEN"
     ]
 }

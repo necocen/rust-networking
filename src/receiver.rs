@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use std::{mem::size_of, net::Ipv4Addr};
 
 use anyhow::Result;
 use libc::ARPOP_REQUEST;
@@ -10,6 +10,7 @@ use crate::{
     icmp::{IcmpClient, IcmpHeader},
     ip::{IpClient, IpHeader},
     params::Params,
+    udp::UdpClient,
 };
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,7 @@ pub struct Receiver {
     pub arp_client: ArpClient,
     pub ip_client: IpClient,
     pub icmp_client: IcmpClient,
+    pub udp_client: UdpClient,
     pub params: Params,
 }
 
@@ -35,22 +37,43 @@ impl Receiver {
                     }
                     EtherData::Ip(_, data) => {
                         let (ip, data) = self.ip_client.receive(data)?;
-                        if let (
-                            IpHeader {
-                                ip_p: IPPROTO_ICMP, ..
-                            },
-                            Some(data),
-                        ) = (ip, data)
-                        {
-                            let icmp = self.icmp_client.receive(&ip, &data)?;
-                            if icmp.icmp_type == ICMP_ECHO {
-                                self.icmp_client.send_echo_reply(
-                                    &self.params,
-                                    &ip,
-                                    &icmp,
-                                    &data[size_of::<IcmpHeader>()..],
-                                    self.params.ip_ttl,
-                                )?;
+
+                        match (ip.ip_p, data) {
+                            (_, None) => {}
+                            (IPPROTO_ICMP, Some(data)) => {
+                                let icmp = self.icmp_client.receive(&ip, &data)?;
+                                if icmp.icmp_type == ICMP_ECHO {
+                                    self.icmp_client.send_echo_reply(
+                                        &self.params,
+                                        &ip,
+                                        &icmp,
+                                        &data[size_of::<IcmpHeader>()..],
+                                        self.params.ip_ttl,
+                                    )?;
+                                }
+                            }
+                            (IPPROTO_UDP, Some(data)) => {
+                                match self.udp_client.receive(&ip, &data) {
+                                    Ok(udp) if u16::from_be(udp.uh_dport) == DHCP_CLIENT_PORT => {
+                                        todo!("dhcp receive");
+                                    }
+                                    Ok(_) => {}
+                                    Err(e) if e.to_string() == "other" => {
+                                        let dst_ip = Ipv4Addr::from(u32::from_be(ip.ip_src));
+                                        self.icmp_client.send_destination_unreachable(
+                                            &self.params,
+                                            &ip,
+                                            &dst_ip,
+                                            &data,
+                                        )?;
+                                    }
+                                    Err(e) => {
+                                        return Err(e);
+                                    }
+                                }
+                            }
+                            _ => {
+                                log::warn!("Unknown protocol: {}", ip.ip_p);
                             }
                         }
                     }

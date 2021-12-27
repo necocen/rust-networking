@@ -168,7 +168,7 @@ fn main() -> anyhow::Result<()> {
     let cmd = Cmd {
         arp_client: arp_client.clone(),
         icmp_client: icmp_client.clone(),
-        udp_client,
+        udp_client: udp_client.clone(),
         params: params.clone(),
     };
     let receiver = Receiver {
@@ -176,6 +176,7 @@ fn main() -> anyhow::Result<()> {
         arp_client: arp_client.clone(),
         ip_client,
         icmp_client,
+        udp_client,
         params: params.clone(),
     };
     let cmd_thread_handler = spawn(move || {

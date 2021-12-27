@@ -156,6 +156,49 @@ impl IcmpClient {
         Ok(())
     }
 
+    pub fn send_destination_unreachable(
+        &self,
+        params: &Params,
+        r_ip: &IpHeader,
+        dst_ip: &Ipv4Addr,
+        data: &[u8],
+    ) -> Result<()> {
+        let mut send_buf = [0u8; 64 * 1024];
+        let ptr = send_buf.as_mut_ptr();
+
+        let icmp = unsafe { &mut *(ptr as *mut IcmpHeader) };
+        icmp.icmp_type = ICMP_DEST_UNREACH;
+        icmp.icmp_code = ICMP_PORT_UNREACH;
+        icmp.icmp_cksum = 0;
+
+        let ip = unsafe { &mut *(ptr.add(size_of::<IcmpHeader>()) as *mut IpHeader) };
+        (*ip) = *r_ip;
+
+        let data_len = data.len().min(64);
+        unsafe {
+            copy_nonoverlapping(
+                data.as_ptr(),
+                ptr.add(size_of::<IcmpHeader>() + size_of::<IpHeader>()),
+                data_len,
+            );
+        }
+
+        let send_len = size_of::<IcmpHeader>() + size_of::<IpHeader>() + data_len;
+        icmp.icmp_cksum = check_sum(&send_buf[..send_len]);
+
+        self.ip_client.send(
+            params,
+            &params.virtual_ip,
+            dst_ip,
+            IPPROTO_ICMP,
+            false,
+            params.ip_ttl,
+            &send_buf[..send_len],
+        )?;
+        log::debug!("SENT >>> {:#?}", icmp);
+        Ok(())
+    }
+
     pub fn receive(&self, ip: &IpHeader, data: &[u8]) -> Result<IcmpHeader> {
         let icmp = unsafe { *(data.as_ptr() as *const IcmpHeader) };
         let sum = check_sum(data);

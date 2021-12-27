@@ -30,10 +30,10 @@ pub struct PseudoIp {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct UdpHeader {
-    uh_sport: u16,
-    uh_dport: u16,
-    uh_ulen: u16,
-    uh_sum: u16,
+    pub uh_sport: u16,
+    pub uh_dport: u16,
+    pub uh_ulen: u16,
+    pub uh_sum: u16,
 }
 
 impl Debug for UdpHeader {
@@ -61,7 +61,7 @@ impl UdpClient {
         }
     }
 
-    pub fn receive(&self, ip: &IpHeader, data: &[u8]) -> Result<()> {
+    pub fn receive(&self, ip: &IpHeader, data: &[u8]) -> Result<UdpHeader> {
         let sum = Self::check_sum(
             &u32::from_be(ip.ip_src).into(),
             &u32::from_be(ip.ip_dst).into(),
@@ -76,15 +76,11 @@ impl UdpClient {
             );
         }
         let udp = unsafe { *(data.as_ptr() as *const UdpHeader) };
-        // TODO: この辺はReceiverでやるべきことの気がする
-        if u16::from_be(udp.uh_dport) == DHCP_CLIENT_PORT {
-            todo!("dhcp receive");
-        } else if self.search_table(u16::from_be(udp.uh_dport)) {
-            log::debug!("RECV <<< {:#?}", udp);
-        } else {
-            todo!("icmp send destination unreachable");
+        if !self.search_table(u16::from_be(udp.uh_dport)) {
+            bail!("other");
         }
-        Ok(())
+        log::debug!("RECV <<< {:#?}", udp);
+        Ok(udp)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -26,6 +26,8 @@ pub const IP_MF: u16 = 0x2000;
 
 pub const ICMP_ECHOREPLY: u8 = 0;
 pub const ICMP_ECHO: u8 = 8;
+pub const ICMP_DEST_UNREACH: u8 = 3;
+pub const ICMP_PORT_UNREACH: u8 = 3;
 
 pub const DHCP_SERVER_PORT: u16 = 67;
 pub const DHCP_CLIENT_PORT: u16 = 68;
