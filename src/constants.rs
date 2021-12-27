@@ -18,6 +18,7 @@ pub const ETH_DATA_LEN: usize = libc::ETH_DATA_LEN as usize;
 pub const ETH_ALEN: usize = libc::ETH_ALEN as usize;
 
 pub const IPPROTO_ICMP: u8 = libc::IPPROTO_ICMP as u8;
+pub const IPPROTO_UDP: u8 = libc::IPPROTO_UDP as u8;
 
 pub const IP_OFFMASK: u16 = 0x1FFF;
 pub const IP_DF: u16 = 0x4000;
@@ -25,6 +26,9 @@ pub const IP_MF: u16 = 0x2000;
 
 pub const ICMP_ECHOREPLY: u8 = 0;
 pub const ICMP_ECHO: u8 = 8;
+
+pub const DHCP_SERVER_PORT: u16 = 67;
+pub const DHCP_CLIENT_PORT: u16 = 68;
 
 pub const ARP_HARDWARE: [&str; 24] = [
     "FromKA9Q:NET/ROMpseudo.",

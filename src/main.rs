@@ -1,6 +1,6 @@
 use crate::{
     arp::ArpClient, cmd::Cmd, constants::*, ether::EtherClient, icmp::IcmpClient, ip::IpClient,
-    receiver::Receiver, socket::Socket,
+    receiver::Receiver, socket::Socket, udp::UdpClient,
 };
 use anyhow::bail;
 use ifstructs::ifreq;
@@ -31,6 +31,7 @@ mod mac_addr;
 mod params;
 mod receiver;
 mod socket;
+mod udp;
 mod utils;
 
 extern "C" {
@@ -162,10 +163,12 @@ fn main() -> anyhow::Result<()> {
     let arp_client = ArpClient::new(ether_client.clone());
     let ip_client = IpClient::new(ether_client.clone(), arp_client.clone());
     let icmp_client = IcmpClient::new(ip_client.clone());
+    let udp_client = UdpClient::new(ip_client.clone());
 
     let cmd = Cmd {
         arp_client: arp_client.clone(),
         icmp_client: icmp_client.clone(),
+        udp_client,
         params: params.clone(),
     };
     let receiver = Receiver {

@@ -1,14 +1,17 @@
-use std::{net::Ipv4Addr, thread::sleep, time::Duration};
+use std::{ffi::CString, net::Ipv4Addr, thread::sleep, time::Duration};
 
 use anyhow::{bail, Context, Result};
 use libc::{kill, SIGTERM};
 
-use crate::{arp::ArpClient, constants::*, icmp::IcmpClient, params::Params};
+use crate::{
+    arp::ArpClient, constants::*, icmp::IcmpClient, params::Params, udp::UdpClient, utils::unescape,
+};
 
 #[derive(Debug, Clone)]
 pub struct Cmd {
     pub arp_client: ArpClient,
     pub icmp_client: IcmpClient,
+    pub udp_client: UdpClient,
     pub params: Params,
 }
 
@@ -49,6 +52,62 @@ impl Cmd {
         Ok(())
     }
 
+    fn udp<'a>(&self, args: &mut impl Iterator<Item = &'a str>) -> Result<()> {
+        let arg = args.next().context("do_cmd_udp: no args")?;
+        match arg {
+            "open" => {
+                let port = if let Some(arg) = args.next() {
+                    self.udp_client.open(arg.parse()?)?
+                } else {
+                    self.udp_client.open(0)?
+                };
+                println!("do_cmd_udp: opened port {}", port);
+            }
+            "close" => {
+                let arg = args.next().context("do_cmd_udp: close has no args")?;
+                self.udp_client.close(arg.parse()?);
+                println!("do_cmd_udp: closed port {}", arg);
+            }
+            "send" => {
+                let arg = args.next().context("do_cmd_udp: send has no args")?;
+                let src_port: u16 = arg.parse()?;
+                let arg = args.next().context("do_cmd_udp: send has no destination")?;
+                // addr:portの形式
+                let mut iter = arg.split(':');
+                let dst_ip: Ipv4Addr = iter
+                    .next()
+                    .context("do_cmd_udp: send has no destination ip")?
+                    .parse()?;
+                let dst_port: u16 = iter
+                    .next()
+                    .context("do_cmd_udp: send has no destination port")?
+                    .parse()?;
+                let arg = args.next().context("do_cmd_udp: send has no content")?;
+                let content = CString::new(unescape(arg))?;
+                self.udp_client.send(
+                    &self.params,
+                    &self.params.virtual_ip,
+                    &dst_ip,
+                    src_port,
+                    dst_port,
+                    false,
+                    content.as_bytes(),
+                )?;
+            }
+            _ => {
+                bail!("do_cmd_udp: unknown arg: {}", arg);
+            }
+        }
+        Ok(())
+    }
+
+    fn do_netstat(&self) {
+        println!("----------------------------------------");
+        println!("protocol: port=data");
+        println!("----------------------------------------");
+        self.udp_client.show_table();
+    }
+
     pub fn do_cmd(&self, cmd: &str) -> Result<()> {
         let mut args = cmd.split_ascii_whitespace().peekable();
         if args.peek() == None {
@@ -69,6 +128,11 @@ impl Cmd {
             "ping" => self.ping(&mut args),
             "ifconfig" => {
                 self.params.print();
+                Ok(())
+            }
+            "udp" => self.udp(&mut args),
+            "netstat" => {
+                self.do_netstat();
                 Ok(())
             }
             "end" => {

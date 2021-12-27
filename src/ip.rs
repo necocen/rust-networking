@@ -204,7 +204,7 @@ impl IpClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn send_link(
+    pub fn send_link(
         &self,
         params: &Params,
         src_mac: &MacAddr,

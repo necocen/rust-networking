@@ -34,6 +34,36 @@ pub fn hex_dump(data: &[u8]) -> String {
     string
 }
 
+pub fn unescape(str: &str) -> String {
+    let mut previous: Option<char> = None;
+    let mut chars: Vec<char> = vec![];
+    for char in str.chars() {
+        if previous != Some('\\') {
+            if char != '\\' {
+                chars.push(char);
+            }
+            previous = Some(char);
+            continue;
+        }
+        match char {
+            'n' => chars.push('\n'),
+            'r' => chars.push('\r'),
+            't' => chars.push('\t'),
+            '\\' => chars.push('\\'),
+            _ => {
+                log::warn!("Unknown escape sequence: \\{}", char);
+                chars.push('\\');
+                chars.push(char);
+            }
+        }
+        previous = None;
+    }
+    if previous == Some('\\') {
+        chars.push('\\');
+    }
+    chars.into_iter().collect::<String>()
+}
+
 pub fn check_sum(data: &[u8]) -> u16 {
     let mut sum = 0u32;
     let mut ptr = data.as_ptr() as *const u16;
@@ -116,4 +146,23 @@ pub fn check_sum2(data1: &[u8], data2: &[u8]) -> u16 {
     }
 
     !sum as u16
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_unescape() {
+        assert_eq!(unescape("ABCDE"), "ABCDE");
+        assert_eq!(unescape("日本語"), "日本語");
+        assert_eq!(unescape("escape\\nescape"), "escape\nescape");
+        assert_eq!(unescape("escape\\rescape"), "escape\rescape");
+        assert_eq!(unescape("escape\\tescape"), "escape\tescape");
+        assert_eq!(unescape("escape\\\\escape"), "escape\\escape");
+        assert_eq!(unescape("escape\\\\nescape"), "escape\\nescape");
+        assert_eq!(unescape("escape\\"), "escape\\");
+    }
 }
