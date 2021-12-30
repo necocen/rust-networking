@@ -1,10 +1,17 @@
-use std::{ffi::CString, net::Ipv4Addr, thread::sleep, time::Duration};
+use std::{
+    ffi::CString,
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+    thread::sleep,
+    time::Duration,
+};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as C, Result};
 use libc::{kill, SIGTERM};
 
 use crate::{
-    arp::ArpClient, constants::*, icmp::IcmpClient, params::Params, udp::UdpClient, utils::unescape,
+    arp::ArpClient, constants::*, context::Context, icmp::IcmpClient, udp::UdpClient,
+    utils::unescape,
 };
 
 #[derive(Debug, Clone)]
@@ -12,7 +19,7 @@ pub struct Cmd {
     pub arp_client: ArpClient,
     pub icmp_client: IcmpClient,
     pub udp_client: UdpClient,
-    pub params: Params,
+    pub context: Arc<Mutex<Context>>,
 }
 
 impl Cmd {
@@ -26,8 +33,7 @@ impl Cmd {
         };
         for i in 0..4 {
             // PING_SEND_NO
-            self.icmp_client
-                .send_echo(&self.params, &dst_ip, i + 1, size)?;
+            self.icmp_client.send_echo(&dst_ip, i + 1, size)?;
             sleep(Duration::from_secs(1));
         }
         Ok(())
@@ -69,6 +75,7 @@ impl Cmd {
                 println!("do_cmd_udp: closed port {}", arg);
             }
             "send" => {
+                let context = self.context.lock().unwrap().clone();
                 let arg = args.next().context("do_cmd_udp: send has no args")?;
                 let src_port: u16 = arg.parse()?;
                 let arg = args.next().context("do_cmd_udp: send has no destination")?;
@@ -85,8 +92,7 @@ impl Cmd {
                 let arg = args.next().context("do_cmd_udp: send has no content")?;
                 let content = CString::new(unescape(arg))?;
                 self.udp_client.send(
-                    &self.params,
-                    &self.params.virtual_ip,
+                    &context.virtual_ip,
                     &dst_ip,
                     src_port,
                     dst_port,
@@ -127,7 +133,7 @@ impl Cmd {
             "arp" => self.arp(&mut args),
             "ping" => self.ping(&mut args),
             "ifconfig" => {
-                self.params.print();
+                self.context.lock().unwrap().print();
                 Ok(())
             }
             "udp" => self.udp(&mut args),

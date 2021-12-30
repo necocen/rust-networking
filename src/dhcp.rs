@@ -4,11 +4,12 @@ use std::{
     intrinsics::copy_nonoverlapping,
     mem::{size_of, zeroed},
     net::Ipv4Addr,
+    sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as C, Result};
 
-use crate::{constants::*, mac_addr::MacAddr, params::Params, udp::UdpClient};
+use crate::{constants::*, context::Context, mac_addr::MacAddr, udp::UdpClient};
 
 #[repr(C)]
 #[derive(Clone)]
@@ -47,7 +48,7 @@ pub struct DhcpPacket {
 
 impl DhcpPacket {
     pub fn new_request(
-        params: &Params,
+        context: &Context,
         ty: u8,
         ciaddr: Option<&Ipv4Addr>,
         req_ip: Option<&Ipv4Addr>,
@@ -70,12 +71,16 @@ impl DhcpPacket {
         packet.siaddr = 0;
         packet.giaddr = 0;
         unsafe {
-            copy_nonoverlapping(<[u8; 6]>::from(params.virtual_mac).as_ptr(), packet.chaddr.as_mut_ptr(), 6);
+            copy_nonoverlapping(
+                <[u8; 6]>::from(context.virtual_mac).as_ptr(),
+                packet.chaddr.as_mut_ptr(),
+                6,
+            );
             copy_nonoverlapping(DHCP_COOKIE.as_ptr(), packet.options.as_mut_ptr(), 4);
         }
         let mut offset = 4;
         offset = packet.set_option(offset, 53, &[ty]);
-        offset = packet.set_option(offset, 51, &params.dhcp_request_lease_time.to_be_bytes());
+        offset = packet.set_option(offset, 51, &context.dhcp_request_lease_time.to_be_bytes());
         if let Some(req_ip) = req_ip {
             offset = packet.set_option(offset, 50, &req_ip.octets());
         }
@@ -340,16 +345,21 @@ pub struct DhcpOption {
 
 #[derive(Debug, Clone)]
 pub struct DhcpClient {
+    context: Arc<Mutex<Context>>,
     udp_client: UdpClient,
 }
 
 impl DhcpClient {
-    pub fn new(udp_client: UdpClient) -> DhcpClient {
-        DhcpClient { udp_client }
+    pub fn new(context: &Arc<Mutex<Context>>, udp_client: UdpClient) -> DhcpClient {
+        DhcpClient {
+            context: Arc::clone(context),
+            udp_client,
+        }
     }
-    pub fn receive(&self, params: &Params, data: &[u8]) -> Result<DhcpPacket> {
+    pub fn receive(&self, data: &[u8]) -> Result<DhcpPacket> {
+        let context = self.context.lock().unwrap().clone();
         let packet = unsafe { &*(data.as_ptr() as *const DhcpPacket) };
-        if MacAddr::from(<[u8; 6]>::try_from(&packet.chaddr[..6]).unwrap()) != params.virtual_mac {
+        if MacAddr::from(<[u8; 6]>::try_from(&packet.chaddr[..6]).unwrap()) != context.virtual_mac {
             bail!("other");
         }
         if u32::from_be(packet.xid) != (std::process::id() & 0xFFFF) {
@@ -364,77 +374,78 @@ impl DhcpClient {
         Ok(packet.clone())
     }
 
-    pub fn check(&self, params: &Params) -> Result<()> {
-        if false { // Local::now() - params.start_time >= params.lease_time / 2
-            if self.send_request_uni(params).is_err() {
+    pub fn check(&self) -> Result<()> {
+        if false {
+            // Local::now() - params.start_time >= params.lease_time / 2
+            if self.send_request_uni().is_err() {
                 // TODO: いろいろ0に戻す
-                self.send_discover(params)?;
+                self.send_discover()?;
             }
         }
-        if false { // Local::now() - params.start_time >= params.lease_time
+        if false {
+            // Local::now() - params.start_time >= params.lease_time
             log::info!("Dhcp: lease timeout");
             // TODO: いろいろ0に戻す
-            self.send_discover(params)?;
+            self.send_discover()?;
         }
         Ok(())
     }
 
-    pub fn send_discover(&self, params: &Params) -> Result<()> {
-        let packet = DhcpPacket::new_request(params, DHCP_DISCOVER, None, None, None);
-        self.udp_send_link(params, &packet)?;
+    pub fn send_discover(&self) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
+        let packet = DhcpPacket::new_request(&context, DHCP_DISCOVER, None, None, None);
+        self.udp_send_link(&packet)?;
         Ok(())
     }
 
-    pub fn send_request(
-        &self,
-        params: &Params,
-        yiaddr: &Ipv4Addr,
-        server: &Ipv4Addr,
-    ) -> Result<()> {
+    pub fn send_request(&self, yiaddr: &Ipv4Addr, server: &Ipv4Addr) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let packet =
-            DhcpPacket::new_request(params, DHCP_REQUEST, None, Some(yiaddr), Some(server));
-        self.udp_send_link(params, &packet)?;
+            DhcpPacket::new_request(&context, DHCP_REQUEST, None, Some(yiaddr), Some(server));
+        self.udp_send_link(&packet)?;
         Ok(())
     }
 
-    pub fn send_request_uni(&self, params: &Params) -> Result<()> {
-        let dhcp_server = params
+    pub fn send_request_uni(&self) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
+        let dhcp_server = context
             .dhcp_server
             .context("DHCP server address was not specified")?;
         let packet = DhcpPacket::new_request(
-            params,
+            &context,
             DHCP_REQUEST,
-            Some(&params.virtual_ip),
-            Some(&params.virtual_ip),
+            Some(&context.virtual_ip),
+            Some(&context.virtual_ip),
             Some(&dhcp_server),
         );
-        self.udp_send(params, &params.virtual_ip, &dhcp_server, &packet)?;
+        self.udp_send(&context.virtual_ip, &dhcp_server, &packet)?;
         Ok(())
     }
 
-    pub fn send_release(&self, params: &Params) -> Result<()> {
-        let dhcp_server = params
+    pub fn send_release(&self) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
+        let dhcp_server = context
             .dhcp_server
             .context("DHCP server address was not specified")?;
         let packet = DhcpPacket::new_request(
-            params,
+            &context,
             DHCP_RELEASE,
-            Some(&params.virtual_ip),
+            Some(&context.virtual_ip),
             None,
             Some(&dhcp_server),
         );
-        self.udp_send(params, &params.virtual_ip, &dhcp_server, &packet)?;
+        self.udp_send(&context.virtual_ip, &dhcp_server, &packet)?;
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn udp_send_link(&self, params: &Params, dhcp: &DhcpPacket) -> Result<()> {
+    fn udp_send_link(&self, dhcp: &DhcpPacket) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let data = unsafe {
             std::slice::from_raw_parts(dhcp as *const _ as *const u8, size_of::<DhcpPacket>())
         };
         self.udp_client.send_link(
-            params,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &MacAddr::BROADCAST,
             &Ipv4Addr::UNSPECIFIED,
             &Ipv4Addr::BROADCAST,
@@ -447,18 +458,11 @@ impl DhcpClient {
         Ok(())
     }
 
-    fn udp_send(
-        &self,
-        params: &Params,
-        src_ip: &Ipv4Addr,
-        dst_ip: &Ipv4Addr,
-        dhcp: &DhcpPacket,
-    ) -> Result<()> {
+    fn udp_send(&self, src_ip: &Ipv4Addr, dst_ip: &Ipv4Addr, dhcp: &DhcpPacket) -> Result<()> {
         let data = unsafe {
             std::slice::from_raw_parts(dhcp as *const _ as *const u8, size_of::<DhcpPacket>())
         };
         self.udp_client.send(
-            params,
             src_ip,
             dst_ip,
             DHCP_CLIENT_PORT,

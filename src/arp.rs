@@ -13,9 +13,9 @@ use libc::{ARPHRD_ETHER, ARPOP_REPLY, ARPOP_REQUEST, ETH_ALEN};
 
 use crate::{
     constants::*,
+    context::Context,
     ether::{EtherClient, EtherHeader},
     mac_addr::MacAddr,
-    params::Params,
 };
 #[repr(C)]
 #[repr(packed)]
@@ -123,24 +123,27 @@ impl ArpTable {
 
 #[derive(Debug, Clone)]
 pub struct ArpClient {
+    context: Arc<Mutex<Context>>,
     ether_client: EtherClient,
     table: Arc<Mutex<ArpTable>>,
 }
 
 impl ArpClient {
-    pub fn new(ether_client: EtherClient) -> ArpClient {
+    pub fn new(context: &Arc<Mutex<Context>>, ether_client: EtherClient) -> ArpClient {
         ArpClient {
+            context: Arc::clone(context),
             ether_client,
             table: Arc::new(Mutex::new(ArpTable::default())),
         }
     }
 
-    pub fn receive(&self, params: &Params, data: &[u8]) -> Result<ArpHeader> {
+    pub fn receive(&self, data: &[u8]) -> Result<ArpHeader> {
+        let context = self.context.lock().unwrap().clone();
         let arp = unsafe { *(data.as_ptr() as *const ArpHeader) };
         match u16::from_be(arp.arp_op) {
             ARPOP_REQUEST => {
                 let addr = Ipv4Addr::from(arp.arp_tpa);
-                if params.is_target_ip_addr(&addr) {
+                if context.is_target_ip_addr(&addr) {
                     self.table
                         .lock()
                         .unwrap()
@@ -149,7 +152,7 @@ impl ArpClient {
             }
             ARPOP_REPLY => {
                 let addr = Ipv4Addr::from(arp.arp_tpa);
-                if addr == Ipv4Addr::from(0) || params.is_target_ip_addr(&addr) {
+                if addr == Ipv4Addr::from(0) || context.is_target_ip_addr(&addr) {
                     self.table
                         .lock()
                         .unwrap()
@@ -191,36 +194,39 @@ impl ArpClient {
         Ok(())
     }
 
-    pub fn send_reply(&self, params: &Params, eh: &EtherHeader, arp: &ArpHeader) -> Result<()> {
+    pub fn send_reply(&self, eh: &EtherHeader, arp: &ArpHeader) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         self.send(
             ARPOP_REPLY,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &eh.ether_shost.into(),
-            &params.virtual_mac,
+            &context.virtual_mac,
             &arp.arp_sha.into(),
             &Ipv4Addr::from(arp.arp_tpa),
             &Ipv4Addr::from(arp.arp_spa),
         )
     }
 
-    pub fn send_request(&self, params: &Params, target_ip: &Ipv4Addr) -> Result<()> {
+    pub fn send_request(&self, target_ip: &Ipv4Addr) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         self.send(
             ARPOP_REQUEST,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &MacAddr::BROADCAST,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &MacAddr::ZERO,
-            &params.virtual_ip,
+            &context.virtual_ip,
             target_ip,
         )
     }
 
-    pub fn send_gratuitous_request(&self, params: &Params, target_ip: &Ipv4Addr) -> Result<()> {
+    pub fn send_gratuitous_request(&self, target_ip: &Ipv4Addr) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         self.send(
             ARPOP_REQUEST,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &MacAddr::BROADCAST,
-            &params.virtual_mac,
+            &context.virtual_mac,
             &MacAddr::ZERO,
             &Ipv4Addr::from(0),
             target_ip,
@@ -234,16 +240,12 @@ impl ArpClient {
             .and_then(|table| table.search(ip_addr))
     }
 
-    pub fn get_target_mac(
-        &self,
-        params: &Params,
-        target_ip: &Ipv4Addr,
-        gratuitous: bool,
-    ) -> Option<MacAddr> {
-        let target_ip = if params.has_same_subnet(target_ip) {
+    pub fn get_target_mac(&self, target_ip: &Ipv4Addr, gratuitous: bool) -> Option<MacAddr> {
+        let context = self.context.lock().unwrap().clone();
+        let target_ip = if context.has_same_subnet(target_ip) {
             target_ip
         } else {
-            &params.gateway
+            &context.gateway
         };
 
         for count in 0..3 {
@@ -253,9 +255,9 @@ impl ArpClient {
             }
             log::info!("Send ARP request for {}", target_ip);
             let result = if gratuitous {
-                self.send_gratuitous_request(params, target_ip)
+                self.send_gratuitous_request(target_ip)
             } else {
-                self.send_request(params, target_ip)
+                self.send_request(target_ip)
             };
             if let Err(e) = result {
                 eprintln!("{}", e);
@@ -264,11 +266,12 @@ impl ArpClient {
         self.search_mac(target_ip)
     }
 
-    pub fn check_ip_unique(&self, params: &Params) -> bool {
-        if let Some(mac) = self.get_target_mac(params, &params.virtual_ip, true) {
+    pub fn check_ip_unique(&self) -> bool {
+        let context = self.context.lock().unwrap().clone();
+        if let Some(mac) = self.get_target_mac(&context.virtual_ip, true) {
             eprintln!(
                 "IP Address {} is already used by {}",
-                params.virtual_ip, mac
+                context.virtual_ip, mac
             );
             false
         } else {

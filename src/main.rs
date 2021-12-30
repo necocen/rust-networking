@@ -5,31 +5,35 @@ use crate::{
 use anyhow::bail;
 use ifstructs::ifreq;
 
+use context::Context;
 use libc::{
     __errno_location, c_char, close, fgets, ioctl, poll, pollfd, signal, sockaddr_in, socket,
     AF_INET, EINTR, POLLERR, POLLIN, SIGINT, SIGPIPE, SIGQUIT, SIGTERM, SIG_IGN, SIOCGIFADDR,
     SIOCGIFFLAGS, SIOCGIFHWADDR, SIOCGIFMTU, SOCK_DGRAM, STDIN_FILENO,
 };
 use mac_addr::MacAddr;
-use params::Params;
 
 use std::{
     ffi::CStr,
     mem::{transmute, zeroed},
     net::Ipv4Addr,
-    sync::atomic::{AtomicBool, Ordering},
-    thread::{spawn, sleep}, time::Duration,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread::{sleep, spawn},
+    time::Duration,
 };
 
 mod arp;
 mod cmd;
 mod constants;
+mod context;
 mod dhcp;
 mod ether;
 mod icmp;
 mod ip;
 mod mac_addr;
-mod params;
 mod receiver;
 mod socket;
 mod udp;
@@ -39,7 +43,7 @@ extern "C" {
     pub static stdin: *mut libc::FILE;
 }
 
-fn show_if_req(params: &mut Params) -> anyhow::Result<()> {
+fn show_if_req(params: &mut Context) -> anyhow::Result<()> {
     let soc = unsafe { socket(AF_INET, SOCK_DGRAM, 0) };
     let mut if_req: ifreq = unsafe { zeroed() };
     if soc == -1 {
@@ -90,7 +94,7 @@ fn show_if_req(params: &mut Params) -> anyhow::Result<()> {
         let addr: sockaddr_in = unsafe { transmute(if_req.ifr_ifru.ifr_addr) };
         let my_ip = Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr));
         println!("my_ip = {:}", my_ip.to_string());
-        params.my_ip = my_ip;
+        params.my_ip = Some(my_ip);
     }
 
     unsafe {
@@ -99,7 +103,7 @@ fn show_if_req(params: &mut Params) -> anyhow::Result<()> {
 
     let my_mac = get_mac_address(&params.device)?;
     println!("my_mac = {}", my_mac);
-    params.my_mac = my_mac;
+    params.my_mac = Some(my_mac);
 
     Ok(())
 }
@@ -132,19 +136,19 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let file = std::fs::read_to_string("./config.toml")?;
-    let mut params = params::Params::from_str(&file)?;
+    let mut context = Context::from_str(&file)?;
 
-    println!("IP-TTL = {}", params.ip_ttl);
-    println!("MTU = {}", params.mtu);
+    println!("IP-TTL = {}", context.ip_ttl);
+    println!("MTU = {}", context.mtu);
 
-    println!("device = {:}", params.device);
+    println!("device = {:}", context.device);
     println!("+++++++++++++++++++++++++++++++++++++++++++++");
-    show_if_req(&mut params)?;
+    show_if_req(&mut context)?;
     println!("+++++++++++++++++++++++++++++++++++++++++++++");
-    println!("virtual_mac = {:}", params.virtual_mac);
-    println!("virtual_ip = {:}", params.virtual_ip);
-    println!("virtual_mask = {:}", params.virtual_mask);
-    println!("gateway = {:}", params.gateway);
+    println!("virtual_mac = {:}", context.virtual_mac);
+    println!("virtual_ip = {:}", context.virtual_ip);
+    println!("virtual_mask = {:}", context.virtual_mask);
+    println!("gateway = {:}", context.gateway);
 
     /// スレッド停止フラグ
     static RUNNING: AtomicBool = AtomicBool::new(true);
@@ -159,19 +163,20 @@ fn main() -> anyhow::Result<()> {
         signal(SIGQUIT, sig_term as libc::sighandler_t);
         signal(SIGPIPE, SIG_IGN);
     }
-    let socket = Socket::new(&params.device)?;
-    let ether_client = EtherClient::new(socket.clone());
-    let arp_client = ArpClient::new(ether_client.clone());
-    let ip_client = IpClient::new(ether_client.clone(), arp_client.clone());
-    let icmp_client = IcmpClient::new(ip_client.clone());
-    let udp_client = UdpClient::new(ip_client.clone());
-    let dhcp_client = DhcpClient::new(udp_client.clone());
+    let socket = Socket::new(&context.device)?;
+    let context = Arc::new(Mutex::new(context));
+    let ether_client = EtherClient::new(&context, socket.clone());
+    let arp_client = ArpClient::new(&context, ether_client.clone());
+    let ip_client = IpClient::new(&context, ether_client.clone(), arp_client.clone());
+    let icmp_client = IcmpClient::new(&context, ip_client.clone());
+    let udp_client = UdpClient::new(&context, ip_client.clone());
+    let dhcp_client = DhcpClient::new(&context, udp_client.clone());
 
     let cmd = Cmd {
         arp_client: arp_client.clone(),
         icmp_client: icmp_client.clone(),
         udp_client: udp_client.clone(),
-        params: params.clone(),
+        context: Arc::clone(&context),
     };
     let receiver = Receiver {
         ether_client,
@@ -180,7 +185,7 @@ fn main() -> anyhow::Result<()> {
         icmp_client,
         udp_client,
         dhcp_client: dhcp_client.clone(),
-        params: params.clone(),
+        context,
     };
     let cmd_thread_handler = spawn(move || {
         let mut targets: [pollfd; 1] = unsafe { zeroed() };
@@ -235,7 +240,7 @@ fn main() -> anyhow::Result<()> {
     // TODO: DHCP
     if true {
         for i in 0..5 {
-            if dhcp_client.send_discover(&params).is_ok() {
+            if dhcp_client.send_discover().is_ok() {
                 break;
             }
             sleep(Duration::from_secs(1));
@@ -245,20 +250,20 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if !arp_client.check_ip_unique(&params) {
+    if !arp_client.check_ip_unique() {
         bail!("IP check failed");
     }
 
     while RUNNING.load(Ordering::Relaxed) {
         sleep(Duration::from_secs(1));
-        dhcp_client.check(&params)?;
+        dhcp_client.check()?;
     }
 
     let _ = eth_thread_handler.join();
     let _ = cmd_thread_handler.join();
 
     // TODO: 本当はたぶんDhcpClientのdropに書くのがいい
-    dhcp_client.send_release(&params)?;
+    dhcp_client.send_release()?;
 
     Ok(())
 }

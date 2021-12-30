@@ -12,8 +12,8 @@ use chrono::Local;
 
 use crate::{
     constants::*,
+    context::Context,
     ip::{IpClient, IpHeader},
-    params::Params,
     utils::check_sum,
 };
 
@@ -64,25 +64,22 @@ impl Debug for IcmpHeader {
 
 #[derive(Debug, Clone)]
 pub struct IcmpClient {
+    context: Arc<Mutex<Context>>,
     ip_client: IpClient,
     ping_data: Arc<Mutex<HashMap<u16, i64>>>,
 }
 
 impl IcmpClient {
-    pub fn new(ip_client: IpClient) -> IcmpClient {
+    pub fn new(context: &Arc<Mutex<Context>>, ip_client: IpClient) -> IcmpClient {
         IcmpClient {
+            context: Arc::clone(context),
             ip_client,
             ping_data: Arc::new(Mutex::new(HashMap::default())),
         }
     }
 
-    pub fn send_echo(
-        &self,
-        params: &Params,
-        dst_ip: &Ipv4Addr,
-        seq: u16,
-        size: usize,
-    ) -> Result<()> {
+    pub fn send_echo(&self, dst_ip: &Ipv4Addr, seq: u16, size: usize) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let mut ptr = send_buf.as_mut_ptr();
 
@@ -105,12 +102,11 @@ impl IcmpClient {
         icmp.icmp_cksum = check_sum(&send_buf[..size]);
 
         self.ip_client.send(
-            params,
-            &params.virtual_ip,
+            &context.virtual_ip,
             dst_ip,
             IPPROTO_ICMP,
             false,
-            params.ip_ttl,
+            context.ip_ttl,
             &send_buf[..size],
         )?;
         log::debug!("SENT >>> {:#?}", icmp);
@@ -120,7 +116,6 @@ impl IcmpClient {
 
     pub fn send_echo_reply(
         &self,
-        params: &Params,
         r_ip: &IpHeader,
         r_icmp: &IcmpHeader,
         data: &[u8],
@@ -144,7 +139,6 @@ impl IcmpClient {
         icmp.icmp_cksum = check_sum(&send_buf[..send_len]);
 
         self.ip_client.send(
-            params,
             &u32::from_be(r_ip.ip_dst).into(),
             &u32::from_be(r_ip.ip_src).into(),
             IPPROTO_ICMP,
@@ -158,11 +152,11 @@ impl IcmpClient {
 
     pub fn send_destination_unreachable(
         &self,
-        params: &Params,
         r_ip: &IpHeader,
         dst_ip: &Ipv4Addr,
         data: &[u8],
     ) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let ptr = send_buf.as_mut_ptr();
 
@@ -187,12 +181,11 @@ impl IcmpClient {
         icmp.icmp_cksum = check_sum(&send_buf[..send_len]);
 
         self.ip_client.send(
-            params,
-            &params.virtual_ip,
+            &context.virtual_ip,
             dst_ip,
             IPPROTO_ICMP,
             false,
-            params.ip_ttl,
+            context.ip_ttl,
             &send_buf[..send_len],
         )?;
         log::debug!("SENT >>> {:#?}", icmp);

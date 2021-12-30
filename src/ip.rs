@@ -17,9 +17,9 @@ use rand::Rng;
 use crate::{
     arp::ArpClient,
     constants::*,
+    context::Context,
     ether::EtherClient,
     mac_addr::MacAddr,
-    params::Params,
     utils::{check_sum2, check_sum_struct},
 };
 
@@ -131,14 +131,20 @@ impl Debug for IpHeader {
 
 #[derive(Debug, Clone)]
 pub struct IpClient {
+    context: Arc<Mutex<Context>>,
     ether_client: EtherClient,
     arp_client: ArpClient,
     buffer: Arc<Mutex<IpRecvBuffer>>,
 }
 
 impl IpClient {
-    pub fn new(ether_client: EtherClient, arp_client: ArpClient) -> IpClient {
+    pub fn new(
+        context: &Arc<Mutex<Context>>,
+        ether_client: EtherClient,
+        arp_client: ArpClient,
+    ) -> IpClient {
         IpClient {
+            context: Arc::clone(context),
             ether_client,
             arp_client,
             buffer: Arc::new(Mutex::new(IpRecvBuffer::new())),
@@ -206,7 +212,6 @@ impl IpClient {
     #[allow(clippy::too_many_arguments)]
     pub fn send_link(
         &self,
-        params: &Params,
         src_mac: &MacAddr,
         dst_mac: &MacAddr,
         src_ip: &Ipv4Addr,
@@ -216,7 +221,8 @@ impl IpClient {
         ttl: u8,
         data: &[u8],
     ) -> anyhow::Result<()> {
-        let max_len = params.mtu as usize - size_of::<IpHeader>();
+        let context = self.context.lock().unwrap().clone();
+        let max_len = context.mtu as usize - size_of::<IpHeader>();
 
         if no_fragment && data.len() > max_len {
             bail!("ip_send_link: too large data: {}", data.len());
@@ -276,7 +282,6 @@ impl IpClient {
     #[allow(clippy::too_many_arguments)]
     pub fn send(
         &self,
-        params: &Params,
         src_ip: &Ipv4Addr,
         dst_ip: &Ipv4Addr,
         protocol: u8,
@@ -284,10 +289,10 @@ impl IpClient {
         ttl: u8,
         data: &[u8],
     ) -> Result<()> {
-        if let Some(dst_mac) = self.arp_client.get_target_mac(params, dst_ip, false) {
+        let context = self.context.lock().unwrap().clone();
+        if let Some(dst_mac) = self.arp_client.get_target_mac(dst_ip, false) {
             self.send_link(
-                params,
-                &params.virtual_mac,
+                &context.virtual_mac,
                 &dst_mac,
                 src_ip,
                 dst_ip,

@@ -15,10 +15,10 @@ struct RawParams {
 }
 
 #[derive(Clone, Debug)]
-pub struct Params {
+pub struct Context {
     pub device: String,
-    pub my_mac: MacAddr,
-    pub my_ip: Ipv4Addr,
+    pub my_mac: Option<MacAddr>,
+    pub my_ip: Option<Ipv4Addr>,
     pub virtual_mac: MacAddr,
     pub virtual_ip: Ipv4Addr,
     pub virtual_mask: Ipv4Addr,
@@ -29,21 +29,21 @@ pub struct Params {
     pub dhcp_request_lease_time: i32,
 }
 
-impl Params {
-    pub fn from_str(str: &str) -> anyhow::Result<Params> {
+impl Context {
+    pub fn from_str(str: &str) -> anyhow::Result<Context> {
         let config: RawParams = toml::from_str(str)?;
 
-        Ok(Params {
+        Ok(Context {
             device: config.device,
-            my_mac: MacAddr::ZERO,
-            my_ip: Ipv4Addr::from(0),
+            my_mac: Some(MacAddr::ZERO),
+            my_ip: Some(Ipv4Addr::from(0)),
             virtual_mac: config.virtual_mac.parse()?,
             virtual_ip: config.virtual_ip.parse()?,
             virtual_mask: config.virtual_mask.parse()?,
             ip_ttl: config.ip_ttl,
             mtu: config.mtu,
             gateway: config.gateway.parse()?,
-            dhcp_server: None, // TODO: configで指定できるようにすべき？
+            dhcp_server: None,
             dhcp_request_lease_time: config.dhcp_request_lease_time,
         })
     }

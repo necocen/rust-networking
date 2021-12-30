@@ -11,9 +11,9 @@ use anyhow::{bail, Result};
 
 use crate::{
     constants::*,
+    context::Context,
     ip::{IpClient, IpHeader},
     mac_addr::MacAddr,
-    params::Params,
     utils::{check_sum2, hex_dump},
 };
 
@@ -49,13 +49,15 @@ impl Debug for UdpHeader {
 
 #[derive(Debug, Clone)]
 pub struct UdpClient {
+    context: Arc<Mutex<Context>>,
     ip_client: IpClient,
     table: Arc<Mutex<HashSet<u16>>>,
 }
 
 impl UdpClient {
-    pub fn new(ip_client: IpClient) -> Self {
+    pub fn new(context: &Arc<Mutex<Context>>, ip_client: IpClient) -> Self {
         UdpClient {
+            context: Arc::clone(context),
             ip_client,
             table: Arc::new(Mutex::new(HashSet::default())),
         }
@@ -87,7 +89,6 @@ impl UdpClient {
     #[allow(clippy::too_many_arguments)]
     pub fn send_link(
         &self,
-        params: &Params,
         src_mac: &MacAddr,
         dst_mac: &MacAddr,
         src_ip: &Ipv4Addr,
@@ -97,6 +98,7 @@ impl UdpClient {
         no_fragment: bool,
         data: &[u8],
     ) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let mut ptr = send_buf.as_mut_ptr();
         let mut udp = unsafe { &mut *(ptr as *mut UdpHeader) };
@@ -111,14 +113,13 @@ impl UdpClient {
         let send_len = size_of::<UdpHeader>() + data.len();
         udp.uh_sum = Self::check_sum(src_ip, dst_ip, IPPROTO_UDP, &send_buf[..send_len]);
         self.ip_client.send_link(
-            params,
             src_mac,
             dst_mac,
             src_ip,
             dst_ip,
             IPPROTO_UDP,
             no_fragment,
-            params.ip_ttl,
+            context.ip_ttl,
             &send_buf[..send_len],
         )?;
         log::debug!("SENT >>> {:#?}", udp);
@@ -129,7 +130,6 @@ impl UdpClient {
     #[allow(clippy::too_many_arguments)]
     pub fn send(
         &self,
-        params: &Params,
         src_ip: &Ipv4Addr,
         dst_ip: &Ipv4Addr,
         src_port: u16,
@@ -137,6 +137,7 @@ impl UdpClient {
         no_fragment: bool,
         data: &[u8],
     ) -> Result<()> {
+        let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let mut ptr = send_buf.as_mut_ptr();
         let mut udp = unsafe { &mut *(ptr as *mut UdpHeader) };
@@ -151,12 +152,11 @@ impl UdpClient {
         let send_len = size_of::<UdpHeader>() + data.len();
         udp.uh_sum = Self::check_sum(src_ip, dst_ip, IPPROTO_UDP, &send_buf[..send_len]);
         self.ip_client.send(
-            params,
             src_ip,
             dst_ip,
             IPPROTO_UDP,
             no_fragment,
-            params.ip_ttl,
+            context.ip_ttl,
             &send_buf[..send_len],
         )?;
         log::debug!("SENT >>> {:#?}", udp);

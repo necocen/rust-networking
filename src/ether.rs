@@ -1,9 +1,10 @@
-use crate::{constants::*, mac_addr::MacAddr, params::Params, socket::Socket};
+use crate::{constants::*, context::Context, mac_addr::MacAddr, socket::Socket};
 use anyhow::{bail, Result};
 use std::{
     fmt::Debug,
     intrinsics::{copy_nonoverlapping, write_bytes},
     mem::{size_of, zeroed},
+    sync::{Arc, Mutex},
 };
 
 #[repr(packed)]
@@ -42,17 +43,22 @@ pub enum EtherData<'a> {
 
 #[derive(Debug, Clone)]
 pub struct EtherClient {
+    context: Arc<Mutex<Context>>,
     socket: Socket,
 }
 
 impl EtherClient {
-    pub fn new(socket: Socket) -> EtherClient {
-        EtherClient { socket }
+    pub fn new(context: &Arc<Mutex<Context>>, socket: Socket) -> EtherClient {
+        EtherClient {
+            context: Arc::clone(context),
+            socket,
+        }
     }
-    pub fn receive<'a>(&self, params: &Params, data: &'a [u8]) -> Result<EtherData<'a>> {
+    pub fn receive<'a>(&self, data: &'a [u8]) -> Result<EtherData<'a>> {
+        let context = self.context.lock().unwrap().clone();
         let eh = unsafe { *(data.as_ptr() as *const EtherHeader) };
         let destination = MacAddr::from(eh.ether_dhost);
-        if destination != MacAddr::BROADCAST && destination != params.virtual_mac {
+        if destination != MacAddr::BROADCAST && destination != context.virtual_mac {
             bail!("other");
         }
         log::debug!("RECV <<< {:#?}", eh);
