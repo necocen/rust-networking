@@ -1,6 +1,6 @@
 use crate::{
-    arp::ArpClient, cmd::Cmd, constants::*, ether::EtherClient, icmp::IcmpClient, ip::IpClient,
-    receiver::Receiver, socket::Socket, udp::UdpClient,
+    arp::ArpClient, cmd::Cmd, constants::*, dhcp::DhcpClient, ether::EtherClient, icmp::IcmpClient,
+    ip::IpClient, receiver::Receiver, socket::Socket, udp::UdpClient,
 };
 use anyhow::bail;
 use ifstructs::ifreq;
@@ -18,12 +18,13 @@ use std::{
     mem::{transmute, zeroed},
     net::Ipv4Addr,
     sync::atomic::{AtomicBool, Ordering},
-    thread::spawn,
+    thread::{spawn, sleep}, time::Duration,
 };
 
 mod arp;
 mod cmd;
 mod constants;
+mod dhcp;
 mod ether;
 mod icmp;
 mod ip;
@@ -164,6 +165,7 @@ fn main() -> anyhow::Result<()> {
     let ip_client = IpClient::new(ether_client.clone(), arp_client.clone());
     let icmp_client = IcmpClient::new(ip_client.clone());
     let udp_client = UdpClient::new(ip_client.clone());
+    let dhcp_client = DhcpClient::new(udp_client.clone());
 
     let cmd = Cmd {
         arp_client: arp_client.clone(),
@@ -177,6 +179,7 @@ fn main() -> anyhow::Result<()> {
         ip_client,
         icmp_client,
         udp_client,
+        dhcp_client: dhcp_client.clone(),
         params: params.clone(),
     };
     let cmd_thread_handler = spawn(move || {
@@ -229,12 +232,33 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // TODO: DHCP
+    if true {
+        for i in 0..5 {
+            if dhcp_client.send_discover(&params).is_ok() {
+                break;
+            }
+            sleep(Duration::from_secs(1));
+        }
+        if false {
+            bail!("Dhcp failed");
+        }
+    }
+
     if !arp_client.check_ip_unique(&params) {
         bail!("IP check failed");
     }
 
+    while RUNNING.load(Ordering::Relaxed) {
+        sleep(Duration::from_secs(1));
+        dhcp_client.check(&params)?;
+    }
+
     let _ = eth_thread_handler.join();
     let _ = cmd_thread_handler.join();
+
+    // TODO: 本当はたぶんDhcpClientのdropに書くのがいい
+    dhcp_client.send_release(&params)?;
 
     Ok(())
 }

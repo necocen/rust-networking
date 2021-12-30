@@ -11,6 +11,7 @@ struct RawParams {
     ip_ttl: u8,
     mtu: i32,
     gateway: String,
+    dhcp_request_lease_time: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -24,6 +25,8 @@ pub struct Params {
     pub ip_ttl: u8,
     pub mtu: i32,
     pub gateway: Ipv4Addr,
+    pub dhcp_server: Option<Ipv4Addr>,
+    pub dhcp_request_lease_time: i32,
 }
 
 impl Params {
@@ -40,6 +43,8 @@ impl Params {
             ip_ttl: config.ip_ttl,
             mtu: config.mtu,
             gateway: config.gateway.parse()?,
+            dhcp_server: None, // TODO: configで指定できるようにすべき？
+            dhcp_request_lease_time: config.dhcp_request_lease_time,
         })
     }
 

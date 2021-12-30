@@ -76,7 +76,8 @@ impl UdpClient {
             );
         }
         let udp = unsafe { *(data.as_ptr() as *const UdpHeader) };
-        if !self.search_table(u16::from_be(udp.uh_dport)) {
+        let port = u16::from_be(udp.uh_dport);
+        if port != DHCP_CLIENT_PORT && !self.search_table(port) {
             bail!("other");
         }
         log::debug!("RECV <<< {:#?}", udp);
