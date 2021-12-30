@@ -32,7 +32,6 @@ pub struct Receiver {
 
 impl Receiver {
     pub fn receive(&self, data: &[u8]) -> Result<()> {
-        let context = self.context.lock().unwrap().clone();
         self.ether_client.receive(data).and_then(|data| {
             match data {
                 EtherData::Arp(eh, data) => {
@@ -47,6 +46,7 @@ impl Receiver {
                     match (ip.ip_p, data) {
                         (_, None) => {}
                         (IPPROTO_ICMP, Some(data)) => {
+                            let context = self.context.lock().unwrap().clone();
                             let icmp = self.icmp_client.receive(&ip, &data)?;
                             if icmp.icmp_type == ICMP_ECHO {
                                 self.icmp_client.send_echo_reply(
@@ -82,10 +82,10 @@ impl Receiver {
                                                     )?;
                                                 }
                                                 DHCP_ACK => {
-                                                    // TODO: virtual_ip書き換えが生じる
-                                                    let ip =
+                                                    let mut context = self.context.lock().unwrap();
+                                                    context.virtual_ip =
                                                         Ipv4Addr::from(u32::from_be(dhcp.yiaddr));
-                                                    let dhcp_server = dhcp
+                                                    context.dhcp_server = dhcp
                                                         .get_option(54)
                                                         .map(|ip| {
                                                             Ipv4Addr::from([
@@ -93,7 +93,7 @@ impl Receiver {
                                                             ])
                                                         })
                                                         .context("Dhcp: invalid dhcp server ip")?;
-                                                    let mask = dhcp
+                                                    context.virtual_mask = dhcp
                                                         .get_option(1)
                                                         .map(|ip| {
                                                             Ipv4Addr::from([
@@ -101,7 +101,7 @@ impl Receiver {
                                                             ])
                                                         })
                                                         .context("Dhcp: invalid netmask")?;
-                                                    let gateway = dhcp
+                                                    context.gateway = dhcp
                                                         .get_option(3)
                                                         .map(|ip| {
                                                             Ipv4Addr::from([
@@ -109,7 +109,7 @@ impl Receiver {
                                                             ])
                                                         })
                                                         .context("Dhcp: invalid gateway")?;
-                                                    let lease_time = dhcp
+                                                    context.dhcp_request_lease_time = dhcp
                                                         .get_option(51)
                                                         .map(|data| {
                                                             u32::from_be_bytes([
@@ -117,18 +117,32 @@ impl Receiver {
                                                             ])
                                                         })
                                                         .context("Dhcp: invalid lease time")?;
-                                                    log::info!("ip = {}", ip);
-                                                    log::info!("mask = {}", mask);
-                                                    log::info!("gateway = {}", gateway);
-                                                    log::info!("DHCP server = {}", dhcp_server);
+                                                    context.dhcp_request_start_date =
+                                                        Some(Local::now());
+                                                    log::info!("ip = {}", context.virtual_ip);
+                                                    log::info!("mask = {}", context.virtual_mask);
+                                                    log::info!("gateway = {}", context.gateway);
+                                                    log::info!(
+                                                        "DHCP server = {}",
+                                                        context.dhcp_server
+                                                    );
                                                     log::info!(
                                                         "DHCP start time = {}",
-                                                        Local::now()
+                                                        context.dhcp_request_start_date.unwrap(),
                                                     );
-                                                    log::info!("DHCP lease time = {}", lease_time);
+                                                    log::info!(
+                                                        "DHCP lease time = {}",
+                                                        context.dhcp_request_lease_time
+                                                    );
                                                 }
                                                 DHCP_NAK => {
-                                                    // TODO: virtual_ip書き換えが生じる
+                                                    let mut context = self.context.lock().unwrap();
+                                                    context.virtual_ip = Ipv4Addr::UNSPECIFIED;
+                                                    context.virtual_mask = Ipv4Addr::UNSPECIFIED;
+                                                    context.gateway = Ipv4Addr::UNSPECIFIED;
+                                                    context.dhcp_server = Ipv4Addr::UNSPECIFIED;
+                                                    context.dhcp_request_start_date = None;
+                                                    context.dhcp_request_lease_time = 0;
                                                     self.dhcp_client.send_discover()?;
                                                 }
                                                 _ => {}

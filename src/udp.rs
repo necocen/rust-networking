@@ -83,6 +83,7 @@ impl UdpClient {
             bail!("other");
         }
         log::debug!("RECV <<< {:#?}", udp);
+        log::trace!("{}", hex_dump(data));
         Ok(udp)
     }
 

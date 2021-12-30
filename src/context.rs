@@ -1,3 +1,5 @@
+use chrono::{DateTime, Local};
+
 use crate::mac_addr::MacAddr;
 
 use std::net::Ipv4Addr;
@@ -6,12 +8,12 @@ use std::net::Ipv4Addr;
 struct RawParams {
     device: String,
     virtual_mac: String,
-    virtual_ip: String,
-    virtual_mask: String,
+    virtual_ip: Option<String>,
+    virtual_mask: Option<String>,
     ip_ttl: u8,
     mtu: i32,
-    gateway: String,
-    dhcp_request_lease_time: i32,
+    gateway: Option<String>,
+    dhcp_request_lease_time: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -25,8 +27,9 @@ pub struct Context {
     pub ip_ttl: u8,
     pub mtu: i32,
     pub gateway: Ipv4Addr,
-    pub dhcp_server: Option<Ipv4Addr>,
-    pub dhcp_request_lease_time: i32,
+    pub dhcp_server: Ipv4Addr,
+    pub dhcp_request_start_date: Option<DateTime<Local>>,
+    pub dhcp_request_lease_time: u32,
 }
 
 impl Context {
@@ -38,12 +41,22 @@ impl Context {
             my_mac: Some(MacAddr::ZERO),
             my_ip: Some(Ipv4Addr::from(0)),
             virtual_mac: config.virtual_mac.parse()?,
-            virtual_ip: config.virtual_ip.parse()?,
-            virtual_mask: config.virtual_mask.parse()?,
+            virtual_ip: config
+                .virtual_ip
+                .unwrap_or_else(|| "0.0.0.0".to_string())
+                .parse()?,
+            virtual_mask: config
+                .virtual_mask
+                .unwrap_or_else(|| "0.0.0.0".to_string())
+                .parse()?,
             ip_ttl: config.ip_ttl,
             mtu: config.mtu,
-            gateway: config.gateway.parse()?,
-            dhcp_server: None,
+            gateway: config
+                .gateway
+                .unwrap_or_else(|| "0.0.0.0".to_string())
+                .parse()?,
+            dhcp_server: Ipv4Addr::UNSPECIFIED,
+            dhcp_request_start_date: None,
             dhcp_request_lease_time: config.dhcp_request_lease_time,
         })
     }

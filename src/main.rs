@@ -149,6 +149,10 @@ fn main() -> anyhow::Result<()> {
     println!("virtual_ip = {:}", context.virtual_ip);
     println!("virtual_mask = {:}", context.virtual_mask);
     println!("gateway = {:}", context.gateway);
+    println!(
+        "dhcp_request_lease_time = {:}",
+        context.dhcp_request_lease_time
+    );
 
     /// スレッド停止フラグ
     static RUNNING: AtomicBool = AtomicBool::new(true);
@@ -185,7 +189,7 @@ fn main() -> anyhow::Result<()> {
         icmp_client,
         udp_client,
         dhcp_client: dhcp_client.clone(),
-        context,
+        context: Arc::clone(&context),
     };
     let cmd_thread_handler = spawn(move || {
         let mut targets: [pollfd; 1] = unsafe { zeroed() };
@@ -237,10 +241,12 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // TODO: DHCP
-    if true {
-        for i in 0..5 {
-            if dhcp_client.send_discover().is_ok() {
+    if context.lock().unwrap().virtual_ip == Ipv4Addr::UNSPECIFIED {
+        for _ in 0..5 {
+            if let Err(e) = dhcp_client.send_discover() {
+                eprintln!("{}", e);
+            }
+            if context.lock().unwrap().virtual_ip != Ipv4Addr::UNSPECIFIED {
                 break;
             }
             sleep(Duration::from_secs(1));
@@ -256,13 +262,21 @@ fn main() -> anyhow::Result<()> {
 
     while RUNNING.load(Ordering::Relaxed) {
         sleep(Duration::from_secs(1));
-        dhcp_client.check()?;
+        if context
+            .lock()
+            .unwrap()
+            .clone()
+            .dhcp_request_start_date
+            .is_some()
+        {
+            dhcp_client.check()?;
+        }
     }
 
     let _ = eth_thread_handler.join();
     let _ = cmd_thread_handler.join();
 
-    // TODO: 本当はたぶんDhcpClientのdropに書くのがいい
+    // FIXME: 本当はたぶんDhcpClientのdropに書くのがいいが、いまのDhcpClientはそうはなっていない
     dhcp_client.send_release()?;
 
     Ok(())

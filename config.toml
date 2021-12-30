@@ -1,8 +1,8 @@
 device = "eth0"
 virtual_mac = "02:00:00:00:00:01"
-virtual_ip = "192.168.10.130"
-virtual_mask = "255.255.255.0"
+#virtual_ip = "192.168.10.130"
+#virtual_mask = "255.255.255.0"
 ip_ttl = 64
 mtu = 1500
-gateway = "192.168.10.1"
+#gateway = "192.168.10.1"
 dhcp_request_lease_time = 600

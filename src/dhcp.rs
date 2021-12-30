@@ -7,7 +7,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Context as C, Result};
+use anyhow::{bail, Result};
+use chrono::{Duration, Local};
 
 use crate::{constants::*, context::Context, mac_addr::MacAddr, udp::UdpClient};
 
@@ -132,11 +133,11 @@ impl DhcpPacket {
                     }
                     n if n == tag => {
                         ptr = ptr.add(1);
-                        return Some(std::slice::from_raw_parts(ptr, *ptr as usize));
+                        return Some(std::slice::from_raw_parts(ptr.add(1), *ptr as usize));
                     }
                     _ => {
                         ptr = ptr.add(1);
-                        ptr = ptr.add(*ptr as usize);
+                        ptr = ptr.add(1 + *ptr as usize);
                     }
                 }
             }
@@ -375,17 +376,31 @@ impl DhcpClient {
     }
 
     pub fn check(&self) -> Result<()> {
-        if false {
-            // Local::now() - params.start_time >= params.lease_time / 2
-            if self.send_request_uni().is_err() {
-                // TODO: いろいろ0に戻す
-                self.send_discover()?;
-            }
-        }
-        if false {
-            // Local::now() - params.start_time >= params.lease_time
+        let context = self.context.lock().unwrap().clone();
+        if context.dhcp_request_start_date.is_none()
+            || Local::now() - context.dhcp_request_start_date.unwrap()
+                >= Duration::seconds(context.dhcp_request_lease_time as i64)
+        {
             log::info!("Dhcp: lease timeout");
-            // TODO: いろいろ0に戻す
+            let mut context = self.context.lock().unwrap();
+            context.virtual_ip = Ipv4Addr::UNSPECIFIED;
+            context.virtual_mask = Ipv4Addr::UNSPECIFIED;
+            context.gateway = Ipv4Addr::UNSPECIFIED;
+            context.dhcp_server = Ipv4Addr::UNSPECIFIED;
+            context.dhcp_request_start_date = None;
+            context.dhcp_request_lease_time = 0;
+            self.send_discover()?;
+        } else if Local::now() - context.dhcp_request_start_date.unwrap()
+            >= Duration::seconds(context.dhcp_request_lease_time as i64 / 2)
+            && self.send_request_uni().is_err()
+        {
+            let mut context = self.context.lock().unwrap();
+            context.virtual_ip = Ipv4Addr::UNSPECIFIED;
+            context.virtual_mask = Ipv4Addr::UNSPECIFIED;
+            context.gateway = Ipv4Addr::UNSPECIFIED;
+            context.dhcp_server = Ipv4Addr::UNSPECIFIED;
+            context.dhcp_request_start_date = None;
+            context.dhcp_request_lease_time = 0;
             self.send_discover()?;
         }
         Ok(())
@@ -399,6 +414,7 @@ impl DhcpClient {
     }
 
     pub fn send_request(&self, yiaddr: &Ipv4Addr, server: &Ipv4Addr) -> Result<()> {
+        println!("{}, {}", yiaddr, server);
         let context = self.context.lock().unwrap().clone();
         let packet =
             DhcpPacket::new_request(&context, DHCP_REQUEST, None, Some(yiaddr), Some(server));
@@ -408,33 +424,27 @@ impl DhcpClient {
 
     pub fn send_request_uni(&self) -> Result<()> {
         let context = self.context.lock().unwrap().clone();
-        let dhcp_server = context
-            .dhcp_server
-            .context("DHCP server address was not specified")?;
         let packet = DhcpPacket::new_request(
             &context,
             DHCP_REQUEST,
             Some(&context.virtual_ip),
             Some(&context.virtual_ip),
-            Some(&dhcp_server),
+            Some(&context.dhcp_server),
         );
-        self.udp_send(&context.virtual_ip, &dhcp_server, &packet)?;
+        self.udp_send(&context.virtual_ip, &context.dhcp_server, &packet)?;
         Ok(())
     }
 
     pub fn send_release(&self) -> Result<()> {
         let context = self.context.lock().unwrap().clone();
-        let dhcp_server = context
-            .dhcp_server
-            .context("DHCP server address was not specified")?;
         let packet = DhcpPacket::new_request(
             &context,
             DHCP_RELEASE,
             Some(&context.virtual_ip),
             None,
-            Some(&dhcp_server),
+            Some(&context.dhcp_server),
         );
-        self.udp_send(&context.virtual_ip, &dhcp_server, &packet)?;
+        self.udp_send(&context.virtual_ip, &context.dhcp_server, &packet)?;
         Ok(())
     }
 
