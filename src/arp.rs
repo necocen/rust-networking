@@ -137,7 +137,7 @@ impl ArpClient {
         }
     }
 
-    pub fn receive(&self, data: &[u8]) -> Result<ArpHeader> {
+    pub fn receive(&self, eh: &EtherHeader, data: &[u8]) -> Result<ArpHeader> {
         let context = self.context.lock().unwrap().clone();
         let arp = unsafe { *(data.as_ptr() as *const ArpHeader) };
         match u16::from_be(arp.arp_op) {
@@ -162,6 +162,9 @@ impl ArpClient {
             _ => {}
         }
         log::debug!("RECV <<< {:#?}", arp);
+        if u16::from_be(arp.arp_op) == ARPOP_REQUEST {
+            self.send_reply(&eh, &arp)?;
+        }
         Ok(arp)
     }
 

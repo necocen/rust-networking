@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context as C, Result};
 use chrono::{Duration, Local};
 
 use crate::{constants::*, context::Context, mac_addr::MacAddr, udp::UdpClient};
@@ -372,6 +372,62 @@ impl DhcpClient {
         }
 
         log::debug!("RECV <<< {:#?}", packet);
+
+        if packet.op == DHCP_BOOTREPLY {
+            if let Some(ty) = packet.get_option(53) {
+                match ty[0] {
+                    DHCP_OFFER => {
+                        let ip = packet
+                            .get_option(54)
+                            .map(|ip| Ipv4Addr::from([ip[0], ip[1], ip[2], ip[3]]))
+                            .context("Dhcp: invalid server ip")?;
+                        self.send_request(&Ipv4Addr::from(u32::from_be(packet.yiaddr)), &ip)?;
+                    }
+                    DHCP_ACK => {
+                        let mut context = self.context.lock().unwrap();
+                        context.virtual_ip = Ipv4Addr::from(u32::from_be(packet.yiaddr));
+                        context.dhcp_server = packet
+                            .get_option(54)
+                            .map(|ip| Ipv4Addr::from([ip[0], ip[1], ip[2], ip[3]]))
+                            .context("Dhcp: invalid dhcp server ip")?;
+                        context.virtual_mask = packet
+                            .get_option(1)
+                            .map(|ip| Ipv4Addr::from([ip[0], ip[1], ip[2], ip[3]]))
+                            .context("Dhcp: invalid netmask")?;
+                        context.gateway = packet
+                            .get_option(3)
+                            .map(|ip| Ipv4Addr::from([ip[0], ip[1], ip[2], ip[3]]))
+                            .context("Dhcp: invalid gateway")?;
+                        context.dhcp_request_lease_time = packet
+                            .get_option(51)
+                            .map(|data| u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
+                            .context("Dhcp: invalid lease time")?;
+                        context.dhcp_request_start_date = Some(Local::now());
+                        log::info!("ip = {}", context.virtual_ip);
+                        log::info!("mask = {}", context.virtual_mask);
+                        log::info!("gateway = {}", context.gateway);
+                        log::info!("DHCP server = {}", context.dhcp_server);
+                        log::info!(
+                            "DHCP start time = {}",
+                            context.dhcp_request_start_date.unwrap(),
+                        );
+                        log::info!("DHCP lease time = {}", context.dhcp_request_lease_time);
+                    }
+                    DHCP_NAK => {
+                        let mut context = self.context.lock().unwrap();
+                        context.virtual_ip = Ipv4Addr::UNSPECIFIED;
+                        context.virtual_mask = Ipv4Addr::UNSPECIFIED;
+                        context.gateway = Ipv4Addr::UNSPECIFIED;
+                        context.dhcp_server = Ipv4Addr::UNSPECIFIED;
+                        context.dhcp_request_start_date = None;
+                        context.dhcp_request_lease_time = 0;
+                        self.send_discover()?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         Ok(packet.clone())
     }
 

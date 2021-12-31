@@ -193,14 +193,21 @@ impl IcmpClient {
     }
 
     pub fn receive<'a>(&self, ip: &IpHeader, data: &'a [u8]) -> Result<(IcmpHeader, &'a [u8])> {
+        let context = self.context.lock().unwrap().clone();
         let icmp = unsafe { *(data.as_ptr() as *const IcmpHeader) };
         let sum = check_sum(data);
         if sum != 0 && sum != 0xFFFF {
             bail!("bad icmp checksum ({:04x}, {:04x})", sum, icmp.icmp_cksum);
         }
         log::debug!("RECV <<< {:#?}", icmp);
-        if icmp.icmp_type == ICMP_ECHOREPLY {
-            self.check_ping(ip, &icmp);
+        match icmp.icmp_type {
+            ICMP_ECHO => {
+                self.send_echo_reply(ip, &icmp, data, context.ip_ttl)?;
+            }
+            ICMP_ECHOREPLY => {
+                self.check_ping(ip, &icmp);
+            }
+            _ => {}
         }
         Ok((icmp, &data[size_of::<IcmpHeader>()..]))
     }
