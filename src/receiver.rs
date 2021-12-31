@@ -3,9 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Context as C, Result};
-use chrono::Local;
-use libc::ARPOP_REQUEST;
+use anyhow::{bail, Result};
 
 use crate::{
     arp::ArpClient, constants::*, context::Context, dhcp::DhcpClient, ether::EtherClient,
