@@ -163,7 +163,7 @@ impl ArpClient {
         }
         log::debug!("RECV <<< {:#?}", arp);
         if u16::from_be(arp.arp_op) == ARPOP_REQUEST {
-            self.send_reply(&eh, &arp)?;
+            self.send_reply(eh, &arp)?;
         }
         Ok(arp)
     }
