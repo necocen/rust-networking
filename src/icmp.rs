@@ -192,7 +192,7 @@ impl IcmpClient {
         Ok(())
     }
 
-    pub fn receive(&self, ip: &IpHeader, data: &[u8]) -> Result<IcmpHeader> {
+    pub fn receive<'a>(&self, ip: &IpHeader, data: &'a [u8]) -> Result<(IcmpHeader, &'a [u8])> {
         let icmp = unsafe { *(data.as_ptr() as *const IcmpHeader) };
         let sum = check_sum(data);
         if sum != 0 && sum != 0xFFFF {
@@ -202,7 +202,7 @@ impl IcmpClient {
         if icmp.icmp_type == ICMP_ECHOREPLY {
             self.check_ping(ip, &icmp);
         }
-        Ok(icmp)
+        Ok((icmp, &data[size_of::<IcmpHeader>()..]))
     }
 
     fn check_ping(&self, ip: &IpHeader, icmp: &IcmpHeader) {

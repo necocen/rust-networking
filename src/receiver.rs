@@ -1,22 +1,15 @@
 use std::{
-    mem::size_of,
     net::Ipv4Addr,
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Context as C, Result};
+use anyhow::{bail, Context as C, Result};
 use chrono::Local;
 use libc::ARPOP_REQUEST;
 
 use crate::{
-    arp::ArpClient,
-    constants::*,
-    context::Context,
-    dhcp::DhcpClient,
-    ether::{EtherClient, EtherData},
-    icmp::{IcmpClient, IcmpHeader},
-    ip::IpClient,
-    udp::{UdpClient, UdpHeader},
+    arp::ArpClient, constants::*, context::Context, dhcp::DhcpClient, ether::EtherClient,
+    icmp::IcmpClient, ip::IpClient, udp::UdpClient,
 };
 
 #[derive(Debug, Clone)]
@@ -32,37 +25,36 @@ pub struct Receiver {
 
 impl Receiver {
     pub fn receive(&self, data: &[u8]) -> Result<()> {
-        self.ether_client.receive(data).and_then(|data| {
-            match data {
-                EtherData::Arp(eh, data) => {
+        self.ether_client.receive(data).and_then(|(eh, data)| {
+            match u16::from_be(eh.ether_type) {
+                ETH_P_ARP => {
                     let arp = self.arp_client.receive(data)?;
                     if u16::from_be(arp.arp_op) == ARPOP_REQUEST {
                         self.arp_client.send_reply(&eh, &arp)?;
                     }
                 }
-                EtherData::Ip(_, data) => {
+                ETH_P_IP => {
                     let (ip, data) = self.ip_client.receive(data)?;
-
                     match (ip.ip_p, data) {
                         (_, None) => {}
                         (IPPROTO_ICMP, Some(data)) => {
                             let context = self.context.lock().unwrap().clone();
-                            let icmp = self.icmp_client.receive(&ip, &data)?;
+                            let (icmp, data) = self.icmp_client.receive(&ip, &data)?;
                             if icmp.icmp_type == ICMP_ECHO {
                                 self.icmp_client.send_echo_reply(
                                     &ip,
                                     &icmp,
-                                    &data[size_of::<IcmpHeader>()..],
+                                    data,
                                     context.ip_ttl,
                                 )?;
                             }
                         }
                         (IPPROTO_UDP, Some(data)) => {
                             match self.udp_client.receive(&ip, &data) {
-                                Ok(udp) if u16::from_be(udp.uh_dport) == DHCP_CLIENT_PORT => {
-                                    let dhcp = self
-                                        .dhcp_client
-                                        .receive(&data[size_of::<UdpHeader>()..])?;
+                                Ok((udp, data))
+                                    if u16::from_be(udp.uh_dport) == DHCP_CLIENT_PORT =>
+                                {
+                                    let dhcp = self.dhcp_client.receive(data)?;
                                     if dhcp.op == DHCP_BOOTREPLY {
                                         // TODO: やっぱこういうのはちょっと変というか、DhcpClientで完結できるものはDhcpClientでやる設計にすべきっぽい
                                         if let Some(ty) = dhcp.get_option(53) {
@@ -165,6 +157,9 @@ impl Receiver {
                             log::warn!("Unknown protocol: {}", ip.ip_p);
                         }
                     }
+                }
+                _ => {
+                    bail!("unknown protocol")
                 }
             }
             Ok(())

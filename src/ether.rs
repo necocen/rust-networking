@@ -36,11 +36,6 @@ impl Debug for EtherHeader {
     }
 }
 
-pub enum EtherData<'a> {
-    Ip(EtherHeader, &'a [u8]),
-    Arp(EtherHeader, &'a [u8]),
-}
-
 #[derive(Debug, Clone)]
 pub struct EtherClient {
     context: Arc<Mutex<Context>>,
@@ -54,7 +49,7 @@ impl EtherClient {
             socket,
         }
     }
-    pub fn receive<'a>(&self, data: &'a [u8]) -> Result<EtherData<'a>> {
+    pub fn receive<'a>(&self, data: &'a [u8]) -> Result<(EtherHeader, &'a [u8])> {
         let context = self.context.lock().unwrap().clone();
         let eh = unsafe { *(data.as_ptr() as *const EtherHeader) };
         let destination = MacAddr::from(eh.ether_dhost);
@@ -62,13 +57,7 @@ impl EtherClient {
             bail!("other");
         }
         log::debug!("RECV <<< {:#?}", eh);
-        match u16::from_be(eh.ether_type) {
-            ETH_P_ARP => Ok(EtherData::Arp(eh, &data[size_of::<EtherHeader>()..])),
-            ETH_P_IP => Ok(EtherData::Ip(eh, &data[size_of::<EtherHeader>()..])),
-            _ => {
-                bail!("unknown protocol")
-            }
-        }
+        Ok((eh, &data[size_of::<EtherHeader>()..]))
     }
 
     pub fn send(

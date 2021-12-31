@@ -63,7 +63,7 @@ impl UdpClient {
         }
     }
 
-    pub fn receive(&self, ip: &IpHeader, data: &[u8]) -> Result<UdpHeader> {
+    pub fn receive<'a>(&self, ip: &IpHeader, data: &'a [u8]) -> Result<(UdpHeader, &'a [u8])> {
         let sum = Self::check_sum(
             &u32::from_be(ip.ip_src).into(),
             &u32::from_be(ip.ip_dst).into(),
@@ -84,7 +84,7 @@ impl UdpClient {
         }
         log::debug!("RECV <<< {:#?}", udp);
         log::trace!("{}", hex_dump(data));
-        Ok(udp)
+        Ok((udp, &data[size_of::<UdpHeader>()..]))
     }
 
     #[allow(clippy::too_many_arguments)]
