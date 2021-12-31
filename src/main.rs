@@ -246,12 +246,12 @@ fn main() -> anyhow::Result<()> {
             if let Err(e) = dhcp_client.send_discover() {
                 eprintln!("{}", e);
             }
+            sleep(Duration::from_secs(1));
             if context.lock().unwrap().virtual_ip != Ipv4Addr::UNSPECIFIED {
                 break;
             }
-            sleep(Duration::from_secs(1));
         }
-        if false {
+        if context.lock().unwrap().virtual_ip == Ipv4Addr::UNSPECIFIED {
             bail!("Dhcp failed");
         }
     }

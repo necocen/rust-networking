@@ -470,7 +470,6 @@ impl DhcpClient {
     }
 
     pub fn send_request(&self, yiaddr: &Ipv4Addr, server: &Ipv4Addr) -> Result<()> {
-        println!("{}, {}", yiaddr, server);
         let context = self.context.lock().unwrap().clone();
         let packet =
             DhcpPacket::new_request(&context, DHCP_REQUEST, None, Some(yiaddr), Some(server));
