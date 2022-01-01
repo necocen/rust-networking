@@ -28,8 +28,9 @@ pub struct Context {
     pub mtu: i32,
     pub gateway: Ipv4Addr,
     pub dhcp_server: Ipv4Addr,
-    pub dhcp_request_start_date: Option<DateTime<Local>>,
+    pub dhcp_start_date: Option<DateTime<Local>>,
     pub dhcp_request_lease_time: u32,
+    pub dhcp_lease_time: Option<u32>,
 }
 
 impl Context {
@@ -56,8 +57,9 @@ impl Context {
                 .unwrap_or_else(|| "0.0.0.0".to_string())
                 .parse()?,
             dhcp_server: Ipv4Addr::UNSPECIFIED,
-            dhcp_request_start_date: None,
+            dhcp_start_date: None,
             dhcp_request_lease_time: config.dhcp_request_lease_time,
+            dhcp_lease_time: None,
         })
     }
 
@@ -77,5 +79,16 @@ impl Context {
         println!("virtual_mask = {}", self.virtual_mask);
         println!("gateway = {}", self.gateway);
         println!("ip_ttl = {}, mtu = {}", self.ip_ttl, self.mtu);
+        if self.dhcp_start_date.is_none() {
+            println!("DHCP: static");
+        } else {
+            println!("DHCP request lease time = {}", self.dhcp_request_lease_time);
+            println!("DHCP server = {}", self.dhcp_server);
+            println!(
+                "DHCP start date = {}",
+                self.dhcp_start_date.unwrap().format("%F %T%z")
+            );
+            println!("DHCP lease time = {}", self.dhcp_lease_time.unwrap());
+        }
     }
 }

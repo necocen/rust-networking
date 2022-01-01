@@ -398,20 +398,21 @@ impl DhcpClient {
                             .get_option(3)
                             .map(|ip| Ipv4Addr::from([ip[0], ip[1], ip[2], ip[3]]))
                             .context("Dhcp: invalid gateway")?;
-                        context.dhcp_request_lease_time = packet
-                            .get_option(51)
-                            .map(|data| u32::from_be_bytes([data[0], data[1], data[2], data[3]]))
-                            .context("Dhcp: invalid lease time")?;
-                        context.dhcp_request_start_date = Some(Local::now());
+                        context.dhcp_lease_time = Some(
+                            packet
+                                .get_option(51)
+                                .map(|data| {
+                                    u32::from_be_bytes([data[0], data[1], data[2], data[3]])
+                                })
+                                .context("Dhcp: invalid lease time")?,
+                        );
+                        context.dhcp_start_date = Some(Local::now());
                         log::info!("ip = {}", context.virtual_ip);
                         log::info!("mask = {}", context.virtual_mask);
                         log::info!("gateway = {}", context.gateway);
                         log::info!("DHCP server = {}", context.dhcp_server);
-                        log::info!(
-                            "DHCP start time = {}",
-                            context.dhcp_request_start_date.unwrap(),
-                        );
-                        log::info!("DHCP lease time = {}", context.dhcp_request_lease_time);
+                        log::info!("DHCP start time = {}", context.dhcp_start_date.unwrap(),);
+                        log::info!("DHCP lease time = {}", context.dhcp_lease_time.unwrap());
                     }
                     DHCP_NAK => {
                         let mut context = self.context.lock().unwrap();
@@ -419,8 +420,8 @@ impl DhcpClient {
                         context.virtual_mask = Ipv4Addr::UNSPECIFIED;
                         context.gateway = Ipv4Addr::UNSPECIFIED;
                         context.dhcp_server = Ipv4Addr::UNSPECIFIED;
-                        context.dhcp_request_start_date = None;
-                        context.dhcp_request_lease_time = 0;
+                        context.dhcp_start_date = None;
+                        context.dhcp_lease_time = None;
                         self.send_discover()?;
                     }
                     _ => {}
@@ -433,9 +434,9 @@ impl DhcpClient {
 
     pub fn check(&self) -> Result<()> {
         let context = self.context.lock().unwrap().clone();
-        if context.dhcp_request_start_date.is_none()
-            || Local::now() - context.dhcp_request_start_date.unwrap()
-                >= Duration::seconds(context.dhcp_request_lease_time as i64)
+        if context.dhcp_start_date.is_none()
+            || Local::now() - context.dhcp_start_date.unwrap()
+                >= Duration::seconds(context.dhcp_lease_time.unwrap() as i64)
         {
             log::info!("Dhcp: lease timeout");
             let mut context = self.context.lock().unwrap();
@@ -443,11 +444,11 @@ impl DhcpClient {
             context.virtual_mask = Ipv4Addr::UNSPECIFIED;
             context.gateway = Ipv4Addr::UNSPECIFIED;
             context.dhcp_server = Ipv4Addr::UNSPECIFIED;
-            context.dhcp_request_start_date = None;
-            context.dhcp_request_lease_time = 0;
+            context.dhcp_start_date = None;
+            context.dhcp_lease_time = None;
             self.send_discover()?;
-        } else if Local::now() - context.dhcp_request_start_date.unwrap()
-            >= Duration::seconds(context.dhcp_request_lease_time as i64 / 2)
+        } else if Local::now() - context.dhcp_start_date.unwrap()
+            >= Duration::seconds(context.dhcp_lease_time.unwrap() as i64 / 2)
             && self.send_request_uni().is_err()
         {
             let mut context = self.context.lock().unwrap();
@@ -455,8 +456,8 @@ impl DhcpClient {
             context.virtual_mask = Ipv4Addr::UNSPECIFIED;
             context.gateway = Ipv4Addr::UNSPECIFIED;
             context.dhcp_server = Ipv4Addr::UNSPECIFIED;
-            context.dhcp_request_start_date = None;
-            context.dhcp_request_lease_time = 0;
+            context.dhcp_start_date = None;
+            context.dhcp_lease_time = None;
             self.send_discover()?;
         }
         Ok(())

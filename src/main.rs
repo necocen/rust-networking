@@ -36,6 +36,7 @@ mod ip;
 mod mac_addr;
 mod receiver;
 mod socket;
+mod tcp;
 mod udp;
 mod utils;
 
@@ -140,6 +141,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("IP-TTL = {}", context.ip_ttl);
     println!("MTU = {}", context.mtu);
+    println!("MSS = {}", context.mss);
 
     println!("device = {:}", context.device);
     println!("+++++++++++++++++++++++++++++++++++++++++++++");
@@ -262,13 +264,7 @@ fn main() -> anyhow::Result<()> {
 
     while RUNNING.load(Ordering::Relaxed) {
         sleep(Duration::from_secs(1));
-        if context
-            .lock()
-            .unwrap()
-            .clone()
-            .dhcp_request_start_date
-            .is_some()
-        {
+        if context.lock().unwrap().clone().dhcp_start_date.is_some() {
             dhcp_client.lock().unwrap().check()?;
         }
     }
