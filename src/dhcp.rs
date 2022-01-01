@@ -539,3 +539,11 @@ impl DhcpClient {
         Ok(())
     }
 }
+
+impl Drop for DhcpClient {
+    fn drop(&mut self) {
+        if let Err(e) = self.send_release() {
+            log::warn!("DhcpClient: {}", e);
+        }
+    }
+}

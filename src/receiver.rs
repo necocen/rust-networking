@@ -23,7 +23,7 @@ pub struct Receiver {
     pub ip_client: IpClient,
     pub icmp_client: IcmpClient,
     pub udp_client: UdpClient,
-    pub dhcp_client: DhcpClient,
+    pub dhcp_client: Arc<Mutex<DhcpClient>>,
     pub context: Arc<Mutex<Context>>,
 }
 
@@ -40,7 +40,7 @@ impl Receiver {
     }
 
     fn receive_dhcp(&self, data: &[u8]) -> Result<()> {
-        self.dhcp_client.receive(data)?;
+        self.dhcp_client.lock().unwrap().receive(data)?;
         Ok(())
     }
 

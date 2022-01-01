@@ -174,7 +174,7 @@ fn main() -> anyhow::Result<()> {
     let ip_client = IpClient::new(&context, ether_client.clone(), arp_client.clone());
     let icmp_client = IcmpClient::new(&context, ip_client.clone());
     let udp_client = UdpClient::new(&context, ip_client.clone());
-    let dhcp_client = DhcpClient::new(&context, udp_client.clone());
+    let dhcp_client = Arc::new(Mutex::new(DhcpClient::new(&context, udp_client.clone())));
 
     let cmd = Cmd {
         arp_client: arp_client.clone(),
@@ -188,7 +188,7 @@ fn main() -> anyhow::Result<()> {
         ip_client,
         icmp_client,
         udp_client,
-        dhcp_client: dhcp_client.clone(),
+        dhcp_client: Arc::clone(&dhcp_client),
         context: Arc::clone(&context),
     };
     let cmd_thread_handler = spawn(move || {
@@ -243,7 +243,7 @@ fn main() -> anyhow::Result<()> {
 
     if context.lock().unwrap().virtual_ip == Ipv4Addr::UNSPECIFIED {
         for _ in 0..5 {
-            if let Err(e) = dhcp_client.send_discover() {
+            if let Err(e) = dhcp_client.lock().unwrap().send_discover() {
                 eprintln!("{}", e);
             }
             sleep(Duration::from_secs(1));
@@ -269,15 +269,12 @@ fn main() -> anyhow::Result<()> {
             .dhcp_request_start_date
             .is_some()
         {
-            dhcp_client.check()?;
+            dhcp_client.lock().unwrap().check()?;
         }
     }
 
     let _ = eth_thread_handler.join();
     let _ = cmd_thread_handler.join();
-
-    // FIXME: 本当はたぶんDhcpClientのdropに書くのがいいが、いまのDhcpClientはそうはなっていない
-    dhcp_client.send_release()?;
 
     Ok(())
 }
