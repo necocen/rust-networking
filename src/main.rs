@@ -1,6 +1,6 @@
 use crate::{
     arp::ArpClient, cmd::Cmd, constants::*, dhcp::DhcpClient, ether::EtherClient, icmp::IcmpClient,
-    ip::IpClient, receiver::Receiver, socket::Socket, udp::UdpClient,
+    ip::IpClient, receiver::Receiver, socket::Socket, tcp::TcpClient, udp::UdpClient,
 };
 use anyhow::bail;
 use ifstructs::ifreq;
@@ -156,8 +156,10 @@ fn main() -> anyhow::Result<()> {
         context.dhcp_request_lease_time
     );
 
-    /// スレッド停止フラグ
+    /// メインスレッド停止フラグ
     static RUNNING: AtomicBool = AtomicBool::new(true);
+    /// バックグラウンドスレッド停止フラグ
+    static RUNNING_BG: AtomicBool = AtomicBool::new(true);
     extern "C" fn sig_term(sig: libc::c_int) {
         RUNNING.store(false, Ordering::Relaxed);
         eprintln!("SIGNAL: {:}", sig);
@@ -177,11 +179,13 @@ fn main() -> anyhow::Result<()> {
     let icmp_client = IcmpClient::new(&context, ip_client.clone());
     let udp_client = UdpClient::new(&context, ip_client.clone());
     let dhcp_client = Arc::new(Mutex::new(DhcpClient::new(&context, udp_client.clone())));
+    let tcp_client = TcpClient::new(&context, ip_client.clone());
 
     let cmd = Cmd {
         arp_client: arp_client.clone(),
         icmp_client: icmp_client.clone(),
         udp_client: udp_client.clone(),
+        tcp_client: tcp_client.clone(),
         context: Arc::clone(&context),
     };
     let receiver = Receiver {
@@ -192,13 +196,14 @@ fn main() -> anyhow::Result<()> {
         udp_client,
         dhcp_client: Arc::clone(&dhcp_client),
         context: Arc::clone(&context),
+        tcp_client: tcp_client.clone(),
     };
     let cmd_thread_handler = spawn(move || {
         let mut targets: [pollfd; 1] = unsafe { zeroed() };
         let mut buf: [u8; 2048] = unsafe { zeroed() };
         targets[0].fd = STDIN_FILENO;
         targets[0].events = POLLIN | POLLERR;
-        while RUNNING.load(Ordering::Relaxed) {
+        while RUNNING_BG.load(Ordering::Relaxed) {
             let ready = unsafe { poll(&mut targets as *mut pollfd, 1, 1000) };
             match ready {
                 -1 => {
@@ -225,7 +230,7 @@ fn main() -> anyhow::Result<()> {
 
     let eth_thread_handler = spawn(move || {
         let mut buf: [u8; 2048] = unsafe { zeroed() };
-        while RUNNING.load(Ordering::Relaxed) {
+        while RUNNING_BG.load(Ordering::Relaxed) {
             let len = match socket.read(&mut buf) {
                 Ok(len) => len,
                 Err(e) => {
@@ -268,6 +273,11 @@ fn main() -> anyhow::Result<()> {
             dhcp_client.lock().unwrap().check()?;
         }
     }
+
+    tcp_client.close_all();
+    // FIXME: tcp_clientの終了処理がDropでは難しいのでこういう構えになっている
+    // （受信スレッドが止まってしまうと終了処理がうまくできない）
+    RUNNING_BG.store(false, Ordering::Relaxed);
 
     let _ = eth_thread_handler.join();
     let _ = cmd_thread_handler.join();

@@ -13,6 +13,7 @@ use crate::{
     ether::{EtherClient, EtherHeader},
     icmp::IcmpClient,
     ip::{IpClient, IpHeader},
+    tcp::TcpClient,
     udp::UdpClient,
 };
 
@@ -24,6 +25,7 @@ pub struct Receiver {
     pub icmp_client: IcmpClient,
     pub udp_client: UdpClient,
     pub dhcp_client: Arc<Mutex<DhcpClient>>,
+    pub tcp_client: TcpClient,
     pub context: Arc<Mutex<Context>>,
 }
 
@@ -32,7 +34,7 @@ impl Receiver {
         let (eh, data) = self.ether_client.receive(data)?;
         match u16::from_be(eh.ether_type) {
             ETH_P_ARP => self.receive_arp(&eh, data),
-            ETH_P_IP => self.receive_ip(data),
+            ETH_P_IP => self.receive_ip(&eh, data),
             _ => {
                 bail!("unknown protocol");
             }
@@ -59,16 +61,25 @@ impl Receiver {
         }
     }
 
+    fn receive_tcp(&self, ip: &IpHeader, data: &[u8]) -> Result<()> {
+        match self.tcp_client.receive(ip, data) {
+            Ok(_) => Ok(()),
+            Err(e) if e.to_string() == "other" => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
     fn receive_icmp(&self, ip: &IpHeader, data: &[u8]) -> Result<()> {
         self.icmp_client.receive(ip, data)?;
         Ok(())
     }
 
-    fn receive_ip(&self, data: &[u8]) -> Result<()> {
-        let (ip, data) = self.ip_client.receive(data)?;
+    fn receive_ip(&self, eh: &EtherHeader, data: &[u8]) -> Result<()> {
+        let (ip, data) = self.ip_client.receive(eh, data)?;
         match (ip.ip_p, data) {
             (IPPROTO_ICMP, Some(data)) => self.receive_icmp(&ip, &data)?,
             (IPPROTO_UDP, Some(data)) => self.receive_udp(&ip, &data)?,
+            (IPPROTO_TCP, Some(data)) => self.receive_tcp(&ip, &data)?,
             (_, None) => {
                 log::trace!("Receive fragment");
             }

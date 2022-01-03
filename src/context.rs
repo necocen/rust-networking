@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
 
-use crate::mac_addr::MacAddr;
+use crate::{constants::*, mac_addr::MacAddr};
 
 use std::net::Ipv4Addr;
 
@@ -14,6 +14,7 @@ struct RawParams {
     mtu: i32,
     gateway: Option<String>,
     dhcp_request_lease_time: u32,
+    mss: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -31,11 +32,19 @@ pub struct Context {
     pub dhcp_start_date: Option<DateTime<Local>>,
     pub dhcp_request_lease_time: u32,
     pub dhcp_lease_time: Option<u32>,
+    pub mss: usize,
 }
 
 impl Context {
     pub fn from_str(str: &str) -> anyhow::Result<Context> {
         let config: RawParams = toml::from_str(str)?;
+
+        let mss = if config.mss > ETHERMTU {
+            log::warn!("given mss ({}) is larger than ETHERMTU", config.mss);
+            ETHERMTU
+        } else {
+            config.mss
+        };
 
         Ok(Context {
             device: config.device,
@@ -60,6 +69,7 @@ impl Context {
             dhcp_start_date: None,
             dhcp_request_lease_time: config.dhcp_request_lease_time,
             dhcp_lease_time: None,
+            mss,
         })
     }
 
@@ -78,7 +88,10 @@ impl Context {
         println!("virtual_ip = {}", self.virtual_ip);
         println!("virtual_mask = {}", self.virtual_mask);
         println!("gateway = {}", self.gateway);
-        println!("ip_ttl = {}, mtu = {}", self.ip_ttl, self.mtu);
+        println!(
+            "ip_ttl = {}, mtu = {}, mss = {}",
+            self.ip_ttl, self.mtu, self.mss
+        );
         if self.dhcp_start_date.is_none() {
             println!("DHCP: static");
         } else {

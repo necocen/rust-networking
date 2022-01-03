@@ -19,7 +19,7 @@ use crate::{
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct PseudoIp {
+struct PseudoIp {
     ip_src: u32,
     ip_dst: u32,
     dummy: u8,

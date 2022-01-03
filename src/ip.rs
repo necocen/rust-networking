@@ -18,7 +18,7 @@ use crate::{
     arp::ArpClient,
     constants::*,
     context::Context,
-    ether::EtherClient,
+    ether::{EtherClient, EtherHeader},
     mac_addr::MacAddr,
     utils::{check_sum2, check_sum_struct},
 };
@@ -150,7 +150,7 @@ impl IpClient {
             buffer: Arc::new(Mutex::new(IpRecvBuffer::new())),
         }
     }
-    pub fn receive(&self, data: &[u8]) -> Result<(IpHeader, Option<Vec<u8>>)> {
+    pub fn receive(&self, eh: &EtherHeader, data: &[u8]) -> Result<(IpHeader, Option<Vec<u8>>)> {
         let mut ptr = data.as_ptr();
         if data.len() < size_of::<IpHeader>() {
             bail!("len({}) < sizeof(struct ip)", data.len());
@@ -187,6 +187,13 @@ impl IpClient {
             bail!("bad ip checksum");
         }
 
+        // FIXME: SYNを受信した時点でARPテーブルに登録がないとSYN-ACKが送れない問題へのworkaround
+        // 本当はちゃんとARPを投げられるような設計が望ましいが……。
+        self.arp_client.add_ip(
+            &Ipv4Addr::from(u32::from_be(ip.ip_src)),
+            &MacAddr::from(eh.ether_shost),
+        );
+
         let plen = (u16::from_be(ip.ip_len) - (ip.ip_hl() * 4) as u16) as usize;
         let offset = ((u16::from_be(ip.ip_off) & IP_OFFMASK) * 8) as usize; // IP_OFFMASK
         let mut buffer = self.buffer.lock().unwrap();
@@ -199,9 +206,10 @@ impl IpClient {
             // データ全部届いた
             entry.len = offset + plen;
             log::debug!("RECV <<< {:#?}", ip);
+            let data = buffer.remove(&u16::from_be(ip.ip_id)).unwrap()[..(offset + plen)].to_vec();
             Ok((
                 ip,
-                Some(buffer.remove(&u16::from_be(ip.ip_id)).unwrap()[..(offset + plen)].to_vec()),
+                Some(data),
             ))
         } else {
             log::debug!("RECV(fragment) <<< {:#?}", ip);

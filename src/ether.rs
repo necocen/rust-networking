@@ -77,9 +77,9 @@ impl EtherClient {
         let eh = unsafe { &mut *(ptr as *mut EtherHeader) };
 
         (*eh) = unsafe { zeroed() };
-        (*eh).ether_dhost = (*dst_mac).into();
-        (*eh).ether_shost = (*src_mac).into();
-        (*eh).ether_type = r#type.to_be();
+        eh.ether_dhost = (*dst_mac).into();
+        eh.ether_shost = (*src_mac).into();
+        eh.ether_type = r#type.to_be();
         unsafe {
             ptr = ptr.add(HEAD_LEN);
             copy_nonoverlapping(data.as_ptr(), ptr, data_len);

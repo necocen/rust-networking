@@ -6,3 +6,4 @@ ip_ttl = 64
 mtu = 1500
 #gateway = "192.168.10.1"
 dhcp_request_lease_time = 600
+mss = 1460

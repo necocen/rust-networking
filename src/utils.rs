@@ -49,6 +49,7 @@ pub fn unescape(str: &str) -> String {
             'n' => chars.push('\n'),
             'r' => chars.push('\r'),
             't' => chars.push('\t'),
+            's' => chars.push(' '),
             '\\' => chars.push('\\'),
             _ => {
                 log::warn!("Unknown escape sequence: \\{}", char);
@@ -138,7 +139,7 @@ pub fn check_sum2(data1: &[u8], data2: &[u8]) -> u16 {
     }
 
     if c == 1 {
-        sum += unsafe { *ptr as u32 };
+        sum += unsafe { (*ptr & 0x00FF) as u32 };
     }
 
     while (sum >> 16) != 0 {

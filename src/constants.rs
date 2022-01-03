@@ -19,6 +19,7 @@ pub const ETH_ALEN: usize = libc::ETH_ALEN as usize;
 
 pub const IPPROTO_ICMP: u8 = libc::IPPROTO_ICMP as u8;
 pub const IPPROTO_UDP: u8 = libc::IPPROTO_UDP as u8;
+pub const IPPROTO_TCP: u8 = libc::IPPROTO_TCP as u8;
 
 pub const IP_OFFMASK: u16 = 0x1FFF;
 pub const IP_DF: u16 = 0x4000;
@@ -54,6 +55,9 @@ pub const DHCP_ACK: u8 = 5;
 pub const DHCP_NAK: u8 = 6;
 pub const DHCP_RELEASE: u8 = 7;
 pub const DHCP_INFORM: u8 = 8;
+
+pub const TCP_INIT_WINDOW: u32 = 1460;
+pub const TCP_FIN_TIMEOUT: u8 = 3;
 
 pub const ARP_HARDWARE: [&str; 24] = [
     "FromKA9Q:NET/ROMpseudo.",

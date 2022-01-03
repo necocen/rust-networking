@@ -287,6 +287,11 @@ impl ArpClient {
         table.remove(ip)
     }
 
+    pub fn add_ip(&self, ip: &Ipv4Addr, mac: &MacAddr) {
+        let mut table = self.table.lock().unwrap();
+        table.add(*ip, *mac);
+    }
+
     pub fn print_table(&self) {
         let table = self.table.lock().unwrap();
         table.print();
