@@ -2,7 +2,7 @@ use std::{
     ffi::CStr,
     fmt::{Debug, Write},
     intrinsics::copy_nonoverlapping,
-    mem::{size_of, zeroed},
+    mem::zeroed,
     net::Ipv4Addr,
     sync::{Arc, Mutex},
 };
@@ -91,7 +91,13 @@ impl DhcpPacket {
         offset = packet.set_option(offset, 55, &[1, 3]);
         offset = packet.set_option(offset, 255, &[]);
 
-        let size = unsafe { packet.options.as_ptr().offset_from(&packet as *const _ as *const u8) } as usize + offset;
+        let size = unsafe {
+            packet
+                .options
+                .as_ptr()
+                .offset_from(&packet as *const _ as *const u8)
+        } as usize
+            + offset;
         (packet, size)
     }
 
@@ -509,9 +515,7 @@ impl DhcpClient {
     #[allow(clippy::too_many_arguments)]
     fn udp_send_link(&self, dhcp: &DhcpPacket, size: usize) -> Result<()> {
         let context = self.context.lock().unwrap().clone();
-        let data = unsafe {
-            std::slice::from_raw_parts(dhcp as *const _ as *const u8, size)
-        };
+        let data = unsafe { std::slice::from_raw_parts(dhcp as *const _ as *const u8, size) };
         self.udp_client.send_link(
             &context.virtual_mac,
             &MacAddr::BROADCAST,
@@ -526,10 +530,14 @@ impl DhcpClient {
         Ok(())
     }
 
-    fn udp_send(&self, src_ip: &Ipv4Addr, dst_ip: &Ipv4Addr, dhcp: &DhcpPacket, size: usize) -> Result<()> {
-        let data = unsafe {
-            std::slice::from_raw_parts(dhcp as *const _ as *const u8, size)
-        };
+    fn udp_send(
+        &self,
+        src_ip: &Ipv4Addr,
+        dst_ip: &Ipv4Addr,
+        dhcp: &DhcpPacket,
+        size: usize,
+    ) -> Result<()> {
+        let data = unsafe { std::slice::from_raw_parts(dhcp as *const _ as *const u8, size) };
         self.udp_client.send(
             src_ip,
             dst_ip,

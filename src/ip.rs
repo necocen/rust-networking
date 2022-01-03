@@ -207,10 +207,7 @@ impl IpClient {
             entry.len = offset + plen;
             log::debug!("RECV <<< {:#?}", ip);
             let data = buffer.remove(&u16::from_be(ip.ip_id)).unwrap()[..(offset + plen)].to_vec();
-            Ok((
-                ip,
-                Some(data),
-            ))
+            Ok((ip, Some(data)))
         } else {
             log::debug!("RECV(fragment) <<< {:#?}", ip);
             Ok((ip, None))

@@ -50,11 +50,11 @@ pub const DHCP_HTYPE_FDDI: u8 = 8;
 pub const DHCP_DISCOVER: u8 = 1;
 pub const DHCP_OFFER: u8 = 2;
 pub const DHCP_REQUEST: u8 = 3;
-pub const DHCP_DECLINE: u8 = 4;
+// pub const DHCP_DECLINE: u8 = 4;
 pub const DHCP_ACK: u8 = 5;
 pub const DHCP_NAK: u8 = 6;
 pub const DHCP_RELEASE: u8 = 7;
-pub const DHCP_INFORM: u8 = 8;
+// pub const DHCP_INFORM: u8 = 8;
 
 pub const TCP_INIT_WINDOW: u32 = 1460;
 pub const TCP_FIN_TIMEOUT: u8 = 3;
