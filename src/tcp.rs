@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::Debug,
+    fmt::{Debug, Write},
     intrinsics::copy_nonoverlapping,
     mem::{size_of, zeroed},
     net::Ipv4Addr,
@@ -86,18 +86,20 @@ impl TcpHeader {
 
 impl Debug for TcpHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut flags = String::new();
+        write!(&mut flags, "{}", if self.urg() {"U"} else {"."}).unwrap();
+        write!(&mut flags, "{}", if self.ack() {"A"} else {"."}).unwrap();
+        write!(&mut flags, "{}", if self.psh() {"P"} else {"."}).unwrap();
+        write!(&mut flags, "{}", if self.rst() {"R"} else {"."}).unwrap();
+        write!(&mut flags, "{}", if self.syn() {"S"} else {"."}).unwrap();
+        write!(&mut flags, "{}", if self.fin() {"F"} else {"."}).unwrap();
         f.debug_struct("TcpHeader")
             .field("source", &u16::from_be(self.source))
             .field("dest", &u16::from_be(self.dest))
             .field("seq", &u32::from_be(self.seq))
             .field("ack_seq", &u32::from_be(self.ack_seq))
             .field("doff", &self.doff())
-            .field("urg", &self.urg())
-            .field("ack", &self.ack())
-            .field("psh", &self.psh())
-            .field("rst", &self.rst())
-            .field("syn", &self.syn())
-            .field("fin", &self.fin())
+            .field("flags", &format_args!("{}", &flags))
             .field("window", &u16::from_be(self.window))
             .field("check", &format_args!("0x{:04x}", u16::from_be(self.check)))
             .field("urg_ptr", &u16::from_be(self.urg_ptr))
