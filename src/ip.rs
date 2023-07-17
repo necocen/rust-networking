@@ -42,7 +42,7 @@ impl IpRecvBuffer {
         // 本当は多くなりすぎたら消去するとかすべき
         match self.0.entry(id) {
             Occupied(mut o) => {
-                let mut entry = o.get_mut();
+                let entry = o.get_mut();
                 entry.id = id;
                 entry.timestamp = Local::now().timestamp();
                 entry.len = 0;
@@ -244,7 +244,7 @@ impl IpClient {
             let send_len = if fragment { max_len / 8 * 8 } else { rest };
             let ptr = send_buf.as_mut_ptr();
 
-            let mut ip = unsafe { &mut *(ptr as *mut IpHeader) };
+            let ip = unsafe { &mut *(ptr as *mut IpHeader) };
             ip.set_ip_v(4);
             ip.set_ip_hl(5);
             ip.ip_len = ((size_of::<IpHeader>() + send_len) as u16).to_be();

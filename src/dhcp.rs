@@ -169,8 +169,8 @@ impl Debug for DhcpPacket {
         };
         let chaddr: [u8; 6] = self.chaddr[0..6].try_into().unwrap();
         // FIXME: これ0終端とは限らないはず
-        let sname = unsafe { CStr::from_ptr(&self.sname as *const _) };
-        let file = unsafe { CStr::from_ptr(&self.file as *const _) };
+        let sname = unsafe { CStr::from_ptr(&self.sname as *const u8 as *const _) };
+        let file = unsafe { CStr::from_ptr(&self.file as *const u8 as *const _) };
 
         if self.options[0..4] != DHCP_COOKIE {
             log::warn!("cookie: error");
@@ -257,7 +257,7 @@ impl Debug for DhcpPacket {
             let mut buf = [0u8; 257];
             copy_nonoverlapping(*ptr, buf.as_mut_ptr(), n);
             buf[n] = 0;
-            let str = CStr::from_ptr(buf.as_ptr());
+            let str = CStr::from_ptr(buf.as_ptr() as *const i8);
             *ptr = ptr.add(n);
             writeln!(options, "\"{}\"", str.to_str().unwrap()).unwrap();
         }

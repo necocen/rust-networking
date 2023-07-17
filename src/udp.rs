@@ -102,7 +102,7 @@ impl UdpClient {
         let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let mut ptr = send_buf.as_mut_ptr();
-        let mut udp = unsafe { &mut *(ptr as *mut UdpHeader) };
+        let udp = unsafe { &mut *(ptr as *mut UdpHeader) };
         udp.uh_sport = src_port.to_be();
         udp.uh_dport = dst_port.to_be();
         udp.uh_ulen = ((size_of::<UdpHeader>() + data.len()) as u16).to_be();
@@ -141,7 +141,7 @@ impl UdpClient {
         let context = self.context.lock().unwrap().clone();
         let mut send_buf = [0u8; 64 * 1024];
         let mut ptr = send_buf.as_mut_ptr();
-        let mut udp = unsafe { &mut *(ptr as *mut UdpHeader) };
+        let udp = unsafe { &mut *(ptr as *mut UdpHeader) };
         udp.uh_sport = src_port.to_be();
         udp.uh_dport = dst_port.to_be();
         udp.uh_ulen = ((size_of::<UdpHeader>() + data.len()) as u16).to_be();
