@@ -130,7 +130,7 @@ fn get_mac_address(device: &str) -> anyhow::Result<MacAddr> {
     unsafe {
         close(soc);
     }
-    Ok(hwaddr.into())
+    Ok(hwaddr.map(|e| e as u8).into())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -216,9 +216,11 @@ fn main() -> anyhow::Result<()> {
                 _ => {
                     if targets[0].revents & (POLLIN | POLLERR) != 0 {
                         unsafe {
-                            fgets(&mut buf as *mut c_char, buf.len() as i32, stdin);
+                            fgets(&mut buf as *mut u8 as *mut c_char, buf.len() as i32, stdin);
                         }
-                        let args = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
+                        let args = unsafe { CStr::from_ptr(buf.as_ptr() as *const i8) }
+                            .to_str()
+                            .unwrap();
                         if let Err(e) = cmd.do_cmd(args) {
                             eprintln!("{:?}", e);
                         }
